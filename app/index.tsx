@@ -38,7 +38,7 @@ export default function Home() {
       <TouchableOpacity
         style={styles.signUpButton}
         >
-        <Link href="/register" style={styles.signUpText}>Get Started</Link>
+        <Link href="/home" style={styles.signUpText}>Get Started</Link>
       </TouchableOpacity>
     </View>
 
@@ -61,7 +61,7 @@ const styles = StyleSheet.create({
   logoContainer: {
     marginTop: 40,
     marginLeft: 20,
-    backgroundColor: 'rgb(177, 4, 4)',
+    backgroundColor: '#b10404',
     borderRadius: 100,
     width: 200,
     height: 200,
