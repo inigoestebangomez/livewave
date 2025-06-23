@@ -17,7 +17,7 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <Ionicons
               name="calendar-outline"
-              size={focused ? 28 : 24}
+              size={focused ? 30 : 26}
               color={focused ? '#fff' : '#aaa'}
               style={[styles.iconBase, focused && styles.iconFocused]}
             />
@@ -30,7 +30,7 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <Ionicons
               name="search-outline"
-              size={focused ? 28 : 24}
+              size={focused ? 30 : 26}
               color={focused ? '#fff' : '#aaa'}
               style={[styles.iconBase, focused && styles.iconFocused]}
             />
@@ -56,7 +56,7 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <Ionicons
               name="person-outline"
-              size={focused ? 28 : 24}
+              size={focused ? 30 : 26}
               color={focused ? '#fff' : '#aaa'}
               style={[styles.iconBase, focused && styles.iconFocused]}
             />
@@ -69,7 +69,7 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <Ionicons
               name="cog-outline"
-              size={focused ? 28 : 24}
+              size={focused ? 30 : 26}
               color={focused ? '#fff' : '#aaa'}
               style={[styles.iconBase, focused && styles.iconFocused]}
             />

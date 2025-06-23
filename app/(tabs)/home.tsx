@@ -6,7 +6,7 @@ import React from 'react'
 const screenWidth = Dimensions.get('window').width
 
 export default function LoggedHome() {
-  const { top } = useSafeAreaInsets()
+  useSafeAreaInsets()
   const username = 'Iñigo'
 
   return (
