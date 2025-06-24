@@ -1,10 +1,29 @@
 import { ImageBackground, StyleSheet,Text, TouchableOpacity, View } from "react-native";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useState } from "react";
+import { supabase } from "./lib/supabase";
 
 export default function Home() {
+
+const router = useRouter();
+const [checkingSession, setCheckingSession] = useState(true)
+
+useEffect(() => {
+  const checkSession = async () => {
+    const { data } = await supabase.auth.getSession()
+    if (data?.session) {
+      router.replace('/(tabs)/home')
+    } else {
+      setCheckingSession(false) 
+    }
+  }
+  checkSession()
+}, [router])
+if (checkingSession) return null
+
   return (
     <ImageBackground 
       source={require('../assets/images/Gemini_Generated_Image_i3fsxii3fsxii3fs.jpeg')}
@@ -38,7 +57,7 @@ export default function Home() {
       <TouchableOpacity
         style={styles.signUpButton}
         >
-        <Link href="/home" style={styles.signUpText}>Get Started</Link>
+        <Link href="/(auth)/register" style={styles.signUpText}>Get Started</Link>
       </TouchableOpacity>
     </View>
 

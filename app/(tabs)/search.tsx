@@ -133,14 +133,38 @@ export default function SearchScreen() {
     setEvents(allEvents)
   }
 
-  const addToCalendar = async (event: any, userId: string) => {
+  const addToCalendar = async (event: any) => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    console.error('No se pudo obtener el usuario:', userError)
+    return
+  }
+
   const artistName = event._embedded?.attractions?.[0]?.name
   const artistSlug = slugify(artistName, { lower: true })
 
-  // 1. Asegurar artista
+// Usa la imagen de selectedArtist si está disponible, si no, usa la del evento
+const artistImages = selectedArtist?.images || event._embedded?.attractions?.[0]?.images || []
+const sortedImages = artistImages.sort((a: any, b: any) => (b.width || 0) - (a.width || 0))
+const imageUrl = sortedImages[0]?.url || ''
+
+  // Upsert del artista con imagen incluida
   const { data: artist, error: artistError } = await supabase
     .from('artists')
-    .upsert({ name: artistName, slug: artistSlug }, { onConflict: 'slug' })
+    .upsert(
+      {
+        name: artistName,
+        slug: artistSlug,
+        image_url: imageUrl,
+      },
+      {
+        onConflict: 'slug',
+      }
+    )
     .select()
     .single()
 
@@ -149,7 +173,7 @@ export default function SearchScreen() {
     return
   }
 
-  // 2. Asegurar evento
+  // Crear o actualizar el evento
   const externalUrl = event.url || ''
   const date = event.dates?.start?.dateTime || event.dates?.start?.localDate
   const venue = event._embedded?.venues?.[0]?.name || ''
@@ -168,7 +192,7 @@ export default function SearchScreen() {
         external_url: externalUrl,
       },
       {
-        onConflict: 'artist_id,date,venue', 
+        onConflict: 'artist_id,date,venue',
       }
     )
     .select()
@@ -179,17 +203,21 @@ export default function SearchScreen() {
     return
   }
 
-  // 3. Relacionar con el usuario
+  // Asociar evento con el usuario
   const { error: relError } = await supabase
     .from('user_events')
-    .upsert({ user_id: userId, event_id: newEvent.id })
+    .upsert(
+      { user_id: user.id, event_id: newEvent.id },
+      { onConflict: 'user_id,event_id' }
+    )
 
   if (relError) {
     console.error('Error saving to user_events:', relError)
   } else {
-    console.log('Evento añadido al calendario')
+    console.log('✅ Evento añadido al calendario')
   }
 }
+
 
   const clearSearch = () => {
     setQuery('')
@@ -345,19 +373,7 @@ export default function SearchScreen() {
                     </View>
                     <TouchableOpacity
                       style={styles.calendarButton}
-                      onPress={() => {
-                        
-                        (async () => {
-                          const { data: { user } } = await supabase.auth.getUser();
-                          const userId = user?.id || '';
-                          if (userId) {
-                            addToCalendar(item, userId);
-                          } else {
-                            console.warn('User not logged in');
-                          }
-                        })();
-                      }}
-                    >
+                      onPress={() => addToCalendar(item)}>
                       <Ionicons name="calendar-outline" size={18} color="#fff" />
                     </TouchableOpacity>
                   </View>

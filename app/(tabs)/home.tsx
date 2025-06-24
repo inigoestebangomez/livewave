@@ -1,17 +1,89 @@
-import { StyleSheet, Text, View, ScrollView, Image, Dimensions } from 'react-native'
+import { StyleSheet, Text, View, ScrollView, Image, Dimensions, ActivityIndicator } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
-import React from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
+import { useUser } from '@supabase/auth-helpers-react'
+import { supabase } from '../lib/supabase'
 
 const screenWidth = Dimensions.get('window').width
 
 export default function LoggedHome() {
-  useSafeAreaInsets()
-  const username = 'Iñigo'
+  const insets = useSafeAreaInsets()
+  const user = useUser()
+  const [loading, setLoading] = useState(true)
+  const [username, setUsername] = useState<string | null>(null)
+  const [events, setEvents] = useState<any[]>([])
+
+  // Obtener nombre de usuario y eventos
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    if (!user) {
+      setLoading(false)
+      return
+    }
+
+    // 1. Obtener el nombre de usuario desde profiles
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('name')
+      .eq('user_id', user.id)
+      .single()
+
+    let name = profile?.name || user.email || 'Usuario'
+    setUsername(name)
+
+    // 2. Obtener los event_id de user_events
+    const { data: userEvents, error: ueError } = await supabase
+      .from('user_events')
+      .select('event_id')
+      .eq('user_id', user.id)
+
+    if (ueError) {
+      setLoading(false)
+      return
+    }
+
+    const eventIds = userEvents?.map((ue: any) => ue.event_id) || []
+
+    if (eventIds.length === 0) {
+      setEvents([])
+      setLoading(false)
+      return
+    }
+
+    // 3. Obtener los eventos con esos IDs, ordenados por fecha
+    const { data: eventsData, error: evError } = await supabase
+      .from('events')
+      .select('id,date,venue,city,country,artist_id,artist:artist_id(name,image_url)')
+      .in('id', eventIds)
+      .order('date', { ascending: true })
+
+    if (evError) {
+      setLoading(false)
+      return
+    }
+
+    setEvents(eventsData || [])
+    setLoading(false)
+  }, [user])
+
+  useEffect(() => {
+    fetchData()
+  }, [user, fetchData])
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+        <ActivityIndicator color="#b10404" size="large" />
+      </View>
+    )
+  }
+
+  const nextEvent = events[0]
+  const upcomingEvents = events.slice(1, 6)
 
   return (
     <View style={{ flex: 1 }}>
-
       <LinearGradient
         colors={['#000000', '#b10404']}
         locations={[0.6, 1]}
@@ -23,27 +95,43 @@ export default function LoggedHome() {
           <Text style={styles.greetingText}>Hola {username}!</Text>
         </View>
 
-        <View style={styles.eventCard}>
-          <Image
-            source={{
-              uri: 'https://www.hellpress.com/wp-content/uploads/2025/03/a-day-to-remember-2024.jpg',
-            }}
-            style={styles.eventImage}
-          />
-          <Text style={styles.eventTitle}>A Day to Remember</Text>
-          <Text style={styles.eventDate}>19 Junio 2025 - Barcelona</Text>
-        </View>
+        {nextEvent ? (
+          <View style={styles.eventCard}>
+            <Image
+              source={{
+                uri: nextEvent.artist?.image_url || 'https://via.placeholder.com/600x400?text=Sin+imagen',
+              }}
+              style={styles.eventImage}
+            />
+            <Text style={styles.eventTitle}>{nextEvent.artist?.name || 'Artista desconocido'}</Text>
+            <Text style={styles.eventDate}>
+              {new Date(nextEvent.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })} - {nextEvent.city}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.eventCard}>
+            <Text style={{ color: '#fff', fontSize: 18, textAlign: 'center' }}>Not upcoming shows</Text>
+          </View>
+        )}
+
         <View style={styles.upcomingContainer}>
           <Text style={styles.upcomingTitle}>Upcoming</Text>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.upcomingScroll}>
-          {[1, 2, 3, 4, 5].map((_, i) => (
-            <View key={i} style={styles.artistContainer}>
+          {upcomingEvents.length === 0 && (
+            <Text style={{ color: '#aaa', marginLeft: 20 }}>No more shows</Text>
+          )}
+          {upcomingEvents.map((event, i) => (
+            <View key={event.id} style={styles.artistContainer}>
               <Image
-                source={{ uri: '' }}
+                source={{ uri: event.artist?.image_url || 'https://via.placeholder.com/200x200?text=Sin+imagen' }}
                 style={styles.artistImage}
               />
-              <Text style={[styles.eventDate, styles.artistTitle]}>Artista {i + 1}</Text>
+              <Text style={[styles.eventDate, styles.artistTitle]}>
+                {event.artist?.name || 'Artista'}{'\n'}
+                <Text style={{ color: '#b10404' }}>
+                </Text>
+              </Text>
             </View>
           ))}
         </ScrollView>
@@ -57,7 +145,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     position: 'relative',
-    resizeMode: 'cover',
   },
   greetingContainer: {
     marginTop: 30,
@@ -73,9 +160,9 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   eventImage: {
-    width: '100%',
+    width: screenWidth * 0.9,
+    height: screenWidth*0.7,
     resizeMode: 'cover',
-    height: 300,
     borderRadius: 20,
     marginBottom: 10,
   },
@@ -83,38 +170,42 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 5,
+    marginLeft: 5,
   },
   eventDate: {
     color: '#aaa',
     fontSize: 14,
+    marginLeft: 5,
   },
   upcomingContainer: {
     marginTop: 10,
     marginLeft: 20,
-    marginBottom: 10,
   },
   upcomingTitle: {
     color: 'white',
     fontSize: 28,
-    fontWeight: 'regular',
+    fontWeight: 'bold',
   },
   upcomingScroll: {
-    marginLeft: 10,
+    marginLeft: 20,
+    marginTop: 30,
+    alignItems: 'center',
+    height: screenWidth * 0.5,
   },
   artistContainer: {
     marginRight: 16,
-    justifyContent: 'flex-start'
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    width: screenWidth * 0.42,
   },
   artistImage: {
-    backgroundColor: '#222',
     width: screenWidth * 0.42,
     height: screenWidth * 0.42,
     borderRadius: 12,
     marginBottom: 8,
   },
   artistTitle: {
-    bottom: 0,
-    paddingLeft: 5
+    textAlign: 'center'
   }
 })
