@@ -1,25 +1,26 @@
 import { supabase } from '../lib/supabase'
 import { useEffect, useState, useCallback } from 'react'
-import { Text, View, StyleSheet } from 'react-native'
+import { Text, View, StyleSheet, DeviceEventEmitter, ScrollView } from 'react-native'
 import { useUser } from '@supabase/auth-helpers-react'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Calendar, LocaleConfig } from 'react-native-calendars'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
-LocaleConfig.locales['es'] = {
+LocaleConfig.locales['en'] = {
   monthNames: [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
   ],
   monthNamesShort: [
-    'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-    'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
   ],
-  dayNames: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
-  dayNamesShort: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
-  today: 'Hoy',
+  dayNames: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+  dayNamesShort: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+  today: 'Today',
   firstDay: 1
 }
-LocaleConfig.defaultLocale = 'es'
+LocaleConfig.defaultLocale = 'en'
 
 export default function CalendarScreen() {
   const user = useUser()
@@ -96,50 +97,64 @@ export default function CalendarScreen() {
     if (user) fetchUserEvents()
   }, [user, fetchUserEvents])
 
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('refreshEvents', fetchUserEvents)
+    return () => sub.remove()
+  }, [fetchUserEvents])
+
   return (
     <View style={{ flex: 1 }}>
-      <LinearGradient
-        colors={['#000000', '#b10404']}
-        locations={[0.6, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.container}>
-        <Text style={styles.title}>Calendario de conciertos</Text>
-        <Calendar
-          markingType={'custom'}
-          markedDates={markedDates}
-          theme={{
-            backgroundColor: '#000',
-            calendarBackground: '#000',
-            textSectionTitleColor: '#fff',
-            dayTextColor: '#fff',
-            monthTextColor: '#fff',
-            arrowColor: '#fff',
-            todayTextColor: '#b10404',
-            textDisabledColor: '#444',
-          }}
-          style={styles.calendar}
-        />
-        {agendaEvents.length === 0 && (
-          <Text style={styles.noEvents}>No shows added</Text>
-        )}
-        {agendaEvents.map((event: any) => (
-          <View key={event.id} style={styles.agendaItem}>
-            <Text style={styles.agendaDate}>
-              {new Date(event.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
-            </Text>
-            <Text style={styles.agendaArtist}>{event.artist?.name || 'Artista desconocido'}</Text>
-            <Text style={styles.agendaVenue}>
-              {event.venue} - {event.city}, {event.country}
-            </Text>
-          </View>
-        ))}
-      </View>
+      <SafeAreaView style={{ flex: 1 }}>
+        <LinearGradient
+          colors={['#000000', '#b10404']}
+          locations={[0.6, 1]}
+          style={styles.safeArea}
+        >
+          <View style={styles.container}>
+            <Calendar
+              markingType={'custom'}
+              markedDates={markedDates}
+              theme={{
+                backgroundColor: '#000',
+                calendarBackground: '#000',
+                textSectionTitleColor: '#fff',
+                dayTextColor: '#fff',
+                monthTextColor: '#fff',
+                arrowColor: '#fff',
+                todayTextColor: '#b10404',
+                textDisabledColor: '#444',
+              }}
+              style={styles.calendar}
+            />
+            {agendaEvents.length === 0 && (
+              <Text style={styles.noEvents}>No added shows</Text>
+            )}
+          <ScrollView contentContainerStyle={styles.scrollContent}
+                      style={styles.scrollView}
+                      showsVerticalScrollIndicator={false}>
+            {agendaEvents.map((event: any) => (
+              <View key={event.id} style={styles.agendaItem}>
+                <Text style={styles.agendaDate}>
+                  {new Date(event.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                </Text>
+                <Text style={styles.agendaArtist}>{event.artist?.name || 'Unknown artist'}</Text>
+                <Text style={styles.agendaVenue}>
+                  {event.venue} - {event.city}, {event.country}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+        </LinearGradient>
+      </SafeAreaView>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     width: '100%',
     height: '100%',
@@ -156,7 +171,16 @@ const styles = StyleSheet.create({
   calendar: {
     borderRadius: 10,
     overflow: 'hidden',
-    marginBottom: 20
+    marginLeft: 20,
+    marginRight: 20,
+    marginBottom: 20,
+    marginTop: 30,
+  },
+  scrollView: {
+    maxHeight: '48%',
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
   agendaTitle: {
     color: '#fff',
@@ -177,7 +201,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     marginBottom: 10,
-    marginHorizontal: 10
+    marginHorizontal: 10,
+    marginLeft: 20,
+    marginRight: 20,
   },
   agendaDate: {
     color: '#b10404',
@@ -186,11 +212,11 @@ const styles = StyleSheet.create({
   },
   agendaArtist: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold'
   },
   agendaVenue: {
     color: '#ccc',
-    fontSize: 15
+    fontSize: 14
   }
 })

@@ -9,7 +9,8 @@ import {
   ImageBackground,
   StyleSheet,
   ScrollView,
-  Dimensions
+  Dimensions,
+  DeviceEventEmitter
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -28,6 +29,7 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(false)
   const [selectedCountry, setSelectedCountry] = useState<string>('all')
   const [selectedCity, setSelectedCity] = useState<string>('all')
+  const [showAdded, setShowAdded] = useState(false)
 
   const insets = useSafeAreaInsets()
 
@@ -214,7 +216,9 @@ const imageUrl = sortedImages[0]?.url || ''
   if (relError) {
     console.error('Error saving to user_events:', relError)
   } else {
-    console.log('✅ Evento añadido al calendario')
+    setShowAdded(true)
+  DeviceEventEmitter.emit('refreshEvents')
+  setTimeout(() => setShowAdded(false), 2000)
   }
 }
 
@@ -399,6 +403,14 @@ const imageUrl = sortedImages[0]?.url || ''
           </View>
         )}
       </View>
+
+      {showAdded && (
+        <View style={styles.addedShowContainer}>
+          <Text style={styles.addedShow}>
+            Show added!
+          </Text>
+        </View>
+      )}
     </ImageBackground>
   )
 }
@@ -535,15 +547,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
-  // gradientOverlay: {
-  //   position: 'absolute',
-  //   bottom: 0,
-  //   left: 0,
-  //   right: 0,
-  //   height: 100,
-  //   zIndex: 10,
-  //   borderRadius: 30,
-  // },
   eventsContainer: {
     flex: 1,
     marginBottom: 70
@@ -594,4 +597,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  addedShowContainer: {
+    position: 'absolute', 
+    bottom: 80, 
+    left: 0, 
+    right: 0, 
+    zIndex: 100,
+    alignItems: 'center'
+  },
+  addedShow: {
+    backgroundColor: '#b10404', 
+    color: '#fff', 
+    padding: 12,
+    borderRadius: 20, 
+    fontWeight: 'bold', 
+    fontSize: 16
+  }
 })

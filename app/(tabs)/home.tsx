@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, ScrollView, Image, Dimensions, ActivityIndicator } from 'react-native'
+import { StyleSheet, Text, View, ScrollView, Image, Dimensions, ActivityIndicator, DeviceEventEmitter } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import React, { useEffect, useState, useCallback } from 'react'
@@ -71,6 +71,11 @@ export default function LoggedHome() {
     fetchData()
   }, [user, fetchData])
 
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('refreshEvents', fetchData)
+    return () => sub.remove()
+  }, [fetchData]) 
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
@@ -82,6 +87,8 @@ export default function LoggedHome() {
   const nextEvent = events[0]
   const upcomingEvents = events.slice(1, 6)
 
+  
+
   return (
     <View style={{ flex: 1 }}>
       <LinearGradient
@@ -92,7 +99,7 @@ export default function LoggedHome() {
 
       <View style={styles.container}>
         <View style={styles.greetingContainer}>
-          <Text style={styles.greetingText}>Hola {username}!</Text>
+          <Text style={styles.greetingText}>Hello {username}!</Text>
         </View>
 
         {nextEvent ? (
