@@ -50,19 +50,7 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="user"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <Ionicons
-              name="person-outline"
-              size={focused ? 30 : 26}
-              color={focused ? '#fff' : '#aaa'}
-              style={[styles.iconBase, focused && styles.iconFocused]}
-            />
-          ),
-        }}
-      />
+
       <Tabs.Screen
         name="settings"
         options={{

@@ -33,6 +33,12 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Allow Livewave to access your calendar to add concert dates."
+        }
       ]
     ],
     "experiments": {

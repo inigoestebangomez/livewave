@@ -74,7 +74,33 @@ export default function LoggedHome() {
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('refreshEvents', fetchData)
     return () => sub.remove()
-  }, [fetchData]) 
+  }, [fetchData])
+
+  useEffect(() => {
+    registerForPushNotifications()
+  }, [user])
+
+  async function registerForPushNotifications() {
+    if (!user) return
+    
+    try {
+      const { registerForPushNotificationsAsync } = await import('../lib/notifications')
+      const token = await registerForPushNotificationsAsync()
+      
+      if (token) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ push_token: token })
+          .eq('id', user.id)
+        
+        if (error) {
+          console.error("Error saving push token:", error)
+        }
+      }
+    } catch (error) {
+      console.error("Error registering for push notifications:", error)
+    }
+  } 
 
   if (loading) {
     return (

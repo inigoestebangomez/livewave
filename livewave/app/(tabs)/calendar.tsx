@@ -1,26 +1,15 @@
 import { supabase } from '../lib/supabase'
 import { useEffect, useState, useCallback } from 'react'
-import { Text, View, StyleSheet, DeviceEventEmitter, ScrollView } from 'react-native'
+import { Text, View, StyleSheet, DeviceEventEmitter, ScrollView, TouchableOpacity } from 'react-native'
 import { useUser } from '@supabase/auth-helpers-react'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Calendar, LocaleConfig } from 'react-native-calendars'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
+import { addToNativeCalendar } from '../lib/calendar-export'
+import { Platform } from 'react-native'
 
-LocaleConfig.locales['en'] = {
-  monthNames: [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ],
-  monthNamesShort: [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-  ],
-  dayNames: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-  dayNamesShort: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-  today: 'Today',
-  firstDay: 1
-}
-LocaleConfig.defaultLocale = 'en'
+// ... imports remain the same
 
 export default function CalendarScreen() {
   const user = useUser()
@@ -28,7 +17,12 @@ export default function CalendarScreen() {
   const [loading, setLoading] = useState(false)
   const [agendaEvents, setAgendaEvents] = useState<any[]>([])
 
+  const handleExport = async (event: any) => {
+    await addToNativeCalendar(event);
+  }
+
   const fetchUserEvents = useCallback(async () => {
+    // ... (fetchUserEvents implementation remains the same)
     setLoading(true)
     if (!user) {
       setLoading(false)
@@ -59,7 +53,7 @@ export default function CalendarScreen() {
     // 2. Obtener los eventos con esos IDs (ahora pedimos más campos)
     const { data: events, error: evError } = await supabase
       .from('events')
-      .select('id,date,venue,city,country,artist_id,artist:artist_id(name)')
+      .select('id,date,venue,city,country,artist_id,artist:artist_id(name),external_url')
       .in('id', eventIds)
 
     if (evError) {
@@ -84,7 +78,6 @@ export default function CalendarScreen() {
     })
 
     setMarkedDates(marks)
-    // Guardamos los eventos ordenados por fecha
     setAgendaEvents(
       events
         .filter((e: any) => !!e.date)
@@ -134,13 +127,20 @@ export default function CalendarScreen() {
                       showsVerticalScrollIndicator={false}>
             {agendaEvents.map((event: any) => (
               <View key={event.id} style={styles.agendaItem}>
-                <Text style={styles.agendaDate}>
-                  {new Date(event.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
-                </Text>
-                <Text style={styles.agendaArtist}>{event.artist?.name || 'Unknown artist'}</Text>
-                <Text style={styles.agendaVenue}>
-                  {event.venue} - {event.city}, {event.country}
-                </Text>
+                <View style={{flex: 1}}>
+                  <Text style={styles.agendaDate}>
+                    {new Date(event.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                  </Text>
+                  <Text style={styles.agendaArtist}>{event.artist?.name || 'Unknown artist'}</Text>
+                  <Text style={styles.agendaVenue}>
+                    {event.venue} - {event.city}, {event.country}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  onPress={() => handleExport(event)}
+                  style={styles.exportButton}>
+                  <Ionicons name="share-outline" size={20} color="#fff" />
+                </TouchableOpacity>
               </View>
             ))}
           </ScrollView>
@@ -204,6 +204,15 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
     marginLeft: 20,
     marginRight: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  exportButton: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+    marginLeft: 10
   },
   agendaDate: {
     color: '#b10404',
