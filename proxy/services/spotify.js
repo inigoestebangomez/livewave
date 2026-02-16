@@ -65,5 +65,25 @@ export const SpotifyService = {
         console.error('Spotify Recommendations Error:', err);
         return [];
     }
+  },
+  // Get related artists (better for concert discovery than track recommendations)
+  getRelatedArtists: async (seedArtistId) => {
+    try {
+        if (!spotifyApi.getAccessToken()) {
+            await getClientCredentialsToken();
+        }
+        const data = await spotifyApi.getArtistRelatedArtists(seedArtistId);
+        return data.body.artists.slice(0, 10).map(artist => ({
+            id: artist.id,
+            name: artist.name,
+            image: artist.images[0]?.url,
+            genres: artist.genres,
+            popularity: artist.popularity,
+            external_url: artist.external_urls.spotify
+        }));
+    } catch (err) {
+        console.error('Spotify Related Artists Error:', err);
+        return [];
+    }
   }
 };

@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, ScrollView, Image, Dimensions, ActivityIndicator, DeviceEventEmitter } from 'react-native'
+import { StyleSheet, Text, View, ScrollView, Image, Dimensions, ActivityIndicator, DeviceEventEmitter, RefreshControl } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import React, { useEffect, useState, useCallback } from 'react'
@@ -23,7 +23,7 @@ export default function LoggedHome() {
     }
 
     // 1. Obtener el nombre de usuario desde profiles
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from('profiles')
       .select('name')
       .eq('user_id', user.id)
@@ -33,15 +33,10 @@ export default function LoggedHome() {
     setUsername(name)
 
     // 2. Obtener los event_id de user_events
-    const { data: userEvents, error: ueError } = await supabase
+    const { data: userEvents } = await supabase
       .from('user_events')
       .select('event_id')
       .eq('user_id', user.id)
-
-    if (ueError) {
-      setLoading(false)
-      return
-    }
 
     const eventIds = userEvents?.map((ue: any) => ue.event_id) || []
 
@@ -52,16 +47,15 @@ export default function LoggedHome() {
     }
 
     // 3. Obtener los eventos con esos IDs, ordenados por fecha
-    const { data: eventsData, error: evError } = await supabase
+    // Filtramos para traer solo eventos futuros o de hoy
+    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+    
+    const { data: eventsData } = await supabase
       .from('events')
       .select('id,date,venue,city,country,artist_id,artist:artist_id(name,image_url)')
       .in('id', eventIds)
+      .gte('date', today) // Filter: date >= today
       .order('date', { ascending: true })
-
-    if (evError) {
-      setLoading(false)
-      return
-    }
 
     setEvents(eventsData || [])
     setLoading(false)
@@ -102,18 +96,16 @@ export default function LoggedHome() {
     }
   } 
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
-        <ActivityIndicator color="#b10404" size="large" />
-      </View>
-    )
-  }
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }, [fetchData]);
 
   const nextEvent = events[0]
   const upcomingEvents = events.slice(1, 6)
-
-  
 
   return (
     <View style={{ flex: 1 }}>
@@ -123,9 +115,14 @@ export default function LoggedHome() {
         style={StyleSheet.absoluteFill}
       />
 
-      <View style={styles.container}>
-        <View style={styles.greetingContainer}>
-          <Text style={styles.greetingText}>Hello {username}!</Text>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#b10404" />
+        }
+      >
+        <View style={[styles.greetingContainer, { marginTop: insets.top + 20 }]}>
+          <Text style={styles.greetingText}>Next Concert</Text>
         </View>
 
         {nextEvent ? (
@@ -143,7 +140,7 @@ export default function LoggedHome() {
           </View>
         ) : (
           <View style={styles.eventCard}>
-            <Text style={{ color: '#fff', fontSize: 18, textAlign: 'center' }}>Not upcoming shows</Text>
+            <Text style={{ color: '#fff', fontSize: 18, textAlign: 'center' }}>No upcoming shows</Text>
           </View>
         )}
 
@@ -163,12 +160,13 @@ export default function LoggedHome() {
               <Text style={[styles.eventDate, styles.artistTitle]}>
                 {event.artist?.name || 'Artista'}{'\n'}
                 <Text style={{ color: '#b10404' }}>
+                  {new Date(event.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
                 </Text>
               </Text>
             </View>
           ))}
         </ScrollView>
-      </View>
+      </ScrollView>
     </View>
   )
 }
@@ -179,9 +177,12 @@ const styles = StyleSheet.create({
     height: '100%',
     position: 'relative',
   },
+  scrollContent: {
+    paddingBottom: 100, // Space for tab bar
+  },
   greetingContainer: {
-    marginTop: 30,
     marginLeft: 20,
+    marginBottom: 10,
   },
   greetingText: {
     color: 'white',
@@ -189,7 +190,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   eventCard: {
-    marginTop: 20,
+    marginTop: 10,
     padding: 16,
   },
   eventImage: {
@@ -240,5 +241,5 @@ const styles = StyleSheet.create({
   },
   artistTitle: {
     textAlign: 'center'
-  }
+  },
 })

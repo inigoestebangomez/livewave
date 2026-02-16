@@ -22,14 +22,13 @@ export default function CalendarScreen() {
   }
 
   const fetchUserEvents = useCallback(async () => {
-    // ... (fetchUserEvents implementation remains the same)
+    // ... (rest of logic same)
     setLoading(true)
     if (!user) {
       setLoading(false)
       return
     }
 
-    // 1. Obtener los event_id de user_events para el usuario
     const { data: userEvents, error: ueError } = await supabase
       .from('user_events')
       .select('event_id')
@@ -50,7 +49,6 @@ export default function CalendarScreen() {
       return
     }
 
-    // 2. Obtener los eventos con esos IDs (ahora pedimos más campos)
     const { data: events, error: evError } = await supabase
       .from('events')
       .select('id,date,venue,city,country,artist_id,artist:artist_id(name),external_url')
@@ -62,7 +60,6 @@ export default function CalendarScreen() {
       return
     }
 
-    // 3. Marcar las fechas en el calendario
     const marks: Record<string, any> = {}
     events.forEach((event: any) => {
       if (!event.date) return
@@ -96,20 +93,20 @@ export default function CalendarScreen() {
   }, [fetchUserEvents])
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <LinearGradient
+        colors={['#000000', '#b10404']}
+        locations={[0.6, 1]}
+        style={StyleSheet.absoluteFill}
+      />
       <SafeAreaView style={{ flex: 1 }}>
-        <LinearGradient
-          colors={['#000000', '#b10404']}
-          locations={[0.6, 1]}
-          style={styles.safeArea}
-        >
           <View style={styles.container}>
             <Calendar
               markingType={'custom'}
               markedDates={markedDates}
               theme={{
-                backgroundColor: '#000',
-                calendarBackground: '#000',
+                backgroundColor: 'transparent',
+                calendarBackground: 'transparent',
                 textSectionTitleColor: '#fff',
                 dayTextColor: '#fff',
                 monthTextColor: '#fff',
@@ -122,9 +119,11 @@ export default function CalendarScreen() {
             {agendaEvents.length === 0 && (
               <Text style={styles.noEvents}>No added shows</Text>
             )}
-          <ScrollView contentContainerStyle={styles.scrollContent}
-                      style={styles.scrollView}
-                      showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                contentContainerStyle={styles.scrollContent}
+                style={styles.scrollView}
+                showsVerticalScrollIndicator={false}
+            >
             {agendaEvents.map((event: any) => (
               <View key={event.id} style={styles.agendaItem}>
                 <View style={{flex: 1}}>
@@ -145,7 +144,6 @@ export default function CalendarScreen() {
             ))}
           </ScrollView>
         </View>
-        </LinearGradient>
       </SafeAreaView>
     </View>
   )
@@ -156,10 +154,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
+    flex: 1,
     width: '100%',
-    height: '100%',
-    position: 'relative',
-    resizeMode: 'cover',
   },
   title: {
     color: '#fff',
@@ -171,16 +167,16 @@ const styles = StyleSheet.create({
   calendar: {
     borderRadius: 10,
     overflow: 'hidden',
-    marginLeft: 20,
-    marginRight: 20,
+    marginHorizontal: 20,
     marginBottom: 20,
-    marginTop: 30,
+    backgroundColor: 'rgba(255,255,255,0.05)', // Slight background for contrast
   },
   scrollView: {
-    maxHeight: '48%',
+    flex: 1, // Fill available space
+    marginTop: 10,
   },
   scrollContent: {
-    paddingBottom: 20,
+    paddingBottom: 100,
   },
   agendaTitle: {
     color: '#fff',

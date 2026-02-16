@@ -90,6 +90,31 @@ app.get('/spotify/recommendations', async (req, res) => {
     res.json(recs);
 });
 
+app.get('/recommendations/artists', async (req, res) => {
+    const { seed_artist_name } = req.query;
+    if (!seed_artist_name) return res.status(400).json({ error: 'Missing seed_artist_name' });
+    
+    try {
+        // 1. Find the Spotify ID for the artist name
+        const searchResults = await SpotifyService.searchArtists(seed_artist_name);
+        if (!searchResults || searchResults.length === 0) {
+            return res.json([]); // No artist found
+        }
+        
+        const bestMatch = searchResults[0]; // Assume first result is correct
+        
+        // 2. Get related artists
+        const related = await SpotifyService.getRelatedArtists(bestMatch.id);
+        
+        res.json({
+            seed: bestMatch.name,
+            recommendations: related
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 app.get('/health', (req, res) => {
   res.json({ 

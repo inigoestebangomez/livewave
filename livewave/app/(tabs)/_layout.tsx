@@ -1,14 +1,17 @@
 import { Ionicons } from '@expo/vector-icons'
 import { Tabs } from 'expo-router'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, Platform } from 'react-native'
+import LiquidTabBar from '../../components/LiquidTabBar'
 
 export default function TabLayout() {
   return (
     <Tabs
+      tabBar={props => <LiquidTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: false,
-        tabBarStyle: styles.tabBar,
+        tabBarShowLabel: false, // Labels are handled in CustomTabBar if needed, or hidden
+        tabBarStyle: { position: 'absolute' }, // Required for transparency behind it if needed, though CustomTabBar handles container
+        tabBarBackground: () => null, // We handle background in CustomTabBar
       }}
     >
       <Tabs.Screen
@@ -16,10 +19,9 @@ export default function TabLayout() {
         options={{
           tabBarIcon: ({ focused }) => (
             <Ionicons
-              name="calendar-outline"
-              size={focused ? 30 : 26}
-              color={focused ? '#fff' : '#aaa'}
-              style={[styles.iconBase, focused && styles.iconFocused]}
+              name={focused ? 'calendar' : 'calendar-outline'}
+              size={24}
+              color={focused ? '#fff' : '#8E8E93'}
             />
           ),
         }}
@@ -29,10 +31,9 @@ export default function TabLayout() {
         options={{
           tabBarIcon: ({ focused }) => (
             <Ionicons
-              name="search-outline"
-              size={focused ? 30 : 26}
-              color={focused ? '#fff' : '#aaa'}
-              style={[styles.iconBase, focused && styles.iconFocused]}
+              name={focused ? 'search' : 'search-outline'}
+              size={24}
+              color={focused ? '#fff' : '#8E8E93'}
             />
           ),
         }}
@@ -42,10 +43,22 @@ export default function TabLayout() {
         options={{
           tabBarIcon: ({ focused }) => (
             <Ionicons
-              name="ellipse-outline"
-              size={focused ? 30 : 26}
-              color={focused ? '#fff' : '#aaa'}
-              style={[styles.iconHome, focused && styles.iconFocused]}
+              name={focused ? 'home' : 'home-outline'}
+              size={24}
+              color={focused ? '#fff' : '#8E8E93'}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="recommendations"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <Ionicons
+              name={focused ? 'heart' : 'heart-outline'}
+              size={24}
+              color={focused ? '#fff' : '#8E8E93'}
             />
           ),
         }}
@@ -56,10 +69,9 @@ export default function TabLayout() {
         options={{
           tabBarIcon: ({ focused }) => (
             <Ionicons
-              name="cog-outline"
-              size={focused ? 30 : 26}
-              color={focused ? '#fff' : '#aaa'}
-              style={[styles.iconBase, focused && styles.iconFocused]}
+              name={focused ? 'cog' : 'cog-outline'}
+              size={24}
+              color={focused ? '#fff' : '#8E8E93'}
             />
           ),
         }}
@@ -67,23 +79,3 @@ export default function TabLayout() {
     </Tabs>
   )
 }
-
-const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: 'transparent',
-    position: 'absolute',
-    borderTopWidth: 0,
-    elevation: 0,
-    height: 65,
-  },
-  iconBase: {
-    borderRadius: 12,
-  },
-  iconFocused: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  iconHome: {
-    padding: 12,
-    borderRadius: 16,
-  },
-})

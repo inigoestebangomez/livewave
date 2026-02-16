@@ -73,7 +73,7 @@ export default function SearchScreen() {
       return
     }
     try {
-      const response = await fetch(`http://192.168.1.131:8082/suggest?keyword=${encodeURIComponent(query)}`)
+      const response = await fetch(`http://192.168.1.135:8082/suggest?keyword=${encodeURIComponent(query)}`)
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
       const data = await response.json()
       setSuggestions(data?._embedded?.attractions || [])
@@ -96,11 +96,11 @@ export default function SearchScreen() {
     try {
       while (hasMorePages && page < maxPages) {
         if (page > 0) await sleep(delayBetweenRequests)
-        const response = await fetch(`http://192.168.1.131:8082/events?keyword=${encodeURIComponent(artistName)}&page=${page}&size=${pageSize}`)
+        const response = await fetch(`http://192.168.1.135:8082/events?keyword=${encodeURIComponent(artistName)}&page=${page}&size=${pageSize}`)
         if (!response.ok) {
           if (response.status === 429) {
             await sleep(2000)
-            const retryResponse = await fetch(`http://192.168.1.131:8082/events?keyword=${encodeURIComponent(artistName)}&page=${page}&size=${pageSize}`)
+            const retryResponse = await fetch(`http://192.168.1.135:8082/events?keyword=${encodeURIComponent(artistName)}&page=${page}&size=${pageSize}`)
             if (!retryResponse.ok) break
             const retryData = await retryResponse.json()
             allEvents.push(...(retryData?._embedded?.events || []))
