@@ -1,0 +1,19 @@
+{
+  "cli": {
+    "version": ">= 3.16.0"
+  },
+  "projectId": "97db1cf8-993e-49c0-a56f-3df64ab182bd",
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {}
+  },
+  "submit": {
+    "production": {}
+  }
+}

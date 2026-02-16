@@ -8,6 +8,7 @@ import * as Location from 'expo-location'
 import Slider from '@react-native-community/slider'
 import { supabase } from '../lib/supabase'
 import { useRouter } from 'expo-router'
+import Toast from 'react-native-toast-message'
 
 export default function Settings() {
   const insets = useSafeAreaInsets()
@@ -82,7 +83,11 @@ export default function Settings() {
       setSaving(true)
       let { status } = await Location.requestForegroundPermissionsAsync()
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Allow location access to find concerts near you.')
+        Toast.show({
+          type: 'error',
+          text1: 'Permission needed',
+          text2: 'Allow location access to find concerts near you.'
+        })
         return
       }
 
@@ -92,9 +97,16 @@ export default function Settings() {
         location_latitude: loc.coords.latitude,
         location_longitude: loc.coords.longitude
       })
-      Alert.alert('Success', 'Location updated!')
+      Toast.show({
+        type: 'success',
+        text1: 'Location updated!'
+      })
     } catch (error) {
-      Alert.alert('Error', 'Could not update location')
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not update location'
+      })
     } finally {
       setSaving(false)
     }
@@ -113,7 +125,11 @@ export default function Settings() {
         uploadAvatar(result.assets[0].uri)
       }
     } catch (error) {
-      Alert.alert('Error', 'Could not pick image')
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not pick image'
+      })
     }
   }
 
@@ -145,10 +161,18 @@ export default function Settings() {
 
       setAvatarUrl(publicUrl)
       await updateProfile({ avatar_url: publicUrl })
+      Toast.show({
+        type: 'success',
+        text1: 'Avatar updated!'
+      })
 
     } catch (error) {
       console.log(error)
-      Alert.alert('Error', 'Could not upload image')
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not upload image'
+      })
     } finally {
       setSaving(false)
     }
@@ -159,7 +183,11 @@ export default function Settings() {
     const { error } = await supabase.from('profiles').update(updates).eq('id', userId)
     if (error) {
       console.error(error)
-      Alert.alert('Error', 'Failed to save changes')
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to save changes'
+      })
     }
   }
 
@@ -283,7 +311,7 @@ export default function Settings() {
              <Text style={styles.signOutText}>Sign Out</Text>
            </TouchableOpacity>
            
-           <TouchableOpacity style={styles.deleteBtn} onPress={() => Alert.alert('Delete Account', 'This feature is coming soon.')}>
+           <TouchableOpacity style={styles.deleteBtn} onPress={() => Toast.show({ type: 'info', text1: 'Coming soon', text2: 'Delete Account feature is under development.' })}>
              <Text style={styles.deleteText}>Delete Account</Text>
            </TouchableOpacity>
         </View>
