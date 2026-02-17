@@ -29,7 +29,7 @@ export default function LiquidTabBar({ state, descriptors, navigation }: BottomT
   }
 
   return (
-    <View style={[styles.container, { bottom: insets.bottom + 10 }]}>
+    <View style={[styles.container, { bottom: insets.bottom }]}>
       <BlurView
         intensity={80}
         tint="systemMaterialDark"

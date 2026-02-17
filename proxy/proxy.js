@@ -90,6 +90,20 @@ app.get('/spotify/recommendations', async (req, res) => {
     res.json(recs);
 });
 
+app.get('/spotify/search', async (req, res) => {
+    const query = req.query.q;
+    const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+    
+    if (!query) return res.status(400).json({ error: 'Missing query' });
+    
+    try {
+        const results = await SpotifyService.searchArtists(query, offset);
+        res.json(results);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/recommendations/artists', async (req, res) => {
     const { seed_artist_name } = req.query;
     if (!seed_artist_name) return res.status(400).json({ error: 'Missing seed_artist_name' });
@@ -98,13 +112,14 @@ app.get('/recommendations/artists', async (req, res) => {
         // 1. Find the Spotify ID for the artist name
         const searchResults = await SpotifyService.searchArtists(seed_artist_name);
         if (!searchResults || searchResults.length === 0) {
-            return res.json([]); // No artist found
+            console.log(`⚠️ Artist not found for seeding: ${seed_artist_name}`);
+            return res.json({ seed: seed_artist_name, recommendations: [] }); 
         }
         
         const bestMatch = searchResults[0]; // Assume first result is correct
         
-        // 2. Get related artists
-        const related = await SpotifyService.getRelatedArtists(bestMatch.id);
+        // 2. Get recommendations based on this artist seed
+        const related = await SpotifyService.getRecommendations([bestMatch.id]);
         
         res.json({
             seed: bestMatch.name,

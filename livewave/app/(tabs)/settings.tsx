@@ -252,6 +252,19 @@ export default function Settings() {
           <View style={styles.card}>
             <View style={styles.rowBetween}>
                <View style={styles.row}>
+                 <Ionicons name="musical-notes" size={20} color="#b10404" />
+                 <Text style={styles.settingLabel}>Music Preferences</Text>
+               </View>
+               <TouchableOpacity onPress={() => router.push('/onboarding/genres')}>
+                 <Text style={styles.actionLink}>Edit</Text>
+               </TouchableOpacity>
+            </View>
+            <Text style={styles.valueText}>Genres, Artists</Text>
+
+            <View style={styles.divider} />
+
+            <View style={styles.rowBetween}>
+               <View style={styles.row}>
                  <Ionicons name="location" size={20} color="#b10404" />
                  <Text style={styles.settingLabel}>My Location</Text>
                </View>
