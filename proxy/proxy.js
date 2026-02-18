@@ -4,6 +4,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import fetch from 'node-fetch'
 import { SpotifyService } from './services/spotify.js'
+import { TicketmasterService } from './services/ticketmaster.js'
 
 dotenv.config()
 
@@ -26,7 +27,34 @@ app.use((req, res, next) => {
 
 // --- TICKETMASTER ENDPOINTS ---
 
+app.get('/recommendations/concerts', async (req, res) => {
+    const { seed_artist_name, city, latlong, radius } = req.query;
+    
+    if (!seed_artist_name) {
+        return res.status(400).json({ error: 'Missing seed_artist_name' });
+    }
+
+    try {
+        console.log(`Testing TM Recs for: ${seed_artist_name} near ${city || latlong}`);
+        const events = await TicketmasterService.getConcertRecommendations({
+            seedArtistName: seed_artist_name,
+            city,
+            latLong: latlong,
+            radius
+        });
+        
+        res.json({
+            seed: seed_artist_name,
+            events: events
+        });
+    } catch (err) {
+        console.error('TM Recs Error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/suggest', async (req, res) => {
+// ... existing suggest code ...
   const keyword = req.query.keyword || ''
   
   if (!keyword || keyword.length < 2) {
@@ -118,8 +146,11 @@ app.get('/recommendations/artists', async (req, res) => {
         
         const bestMatch = searchResults[0]; // Assume first result is correct
         
+        console.log(`🎯 [Proxy] Seed Artist Found: ${bestMatch.name} (${bestMatch.id}) Genres: ${bestMatch.genres}`);
+        
         // 2. Get recommendations based on this artist seed
-        const related = await SpotifyService.getRecommendations([bestMatch.id]);
+        // Pass genres to avoid extra lookup
+        const related = await SpotifyService.getRecommendations([bestMatch.id], bestMatch.genres || []);
         
         res.json({
             seed: bestMatch.name,
@@ -140,6 +171,6 @@ app.get('/health', (req, res) => {
   })
 })
 
-app.listen(PORT, () => {
-  console.log(`✅ Proxy corriendo en http://localhost:${PORT}`)
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Proxy corriendo en http://0.0.0.0:${PORT}`)
 })

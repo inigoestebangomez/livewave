@@ -77,6 +77,7 @@ export async function getEventsForArtist(artistName: string): Promise<Event[]> {
   }
 }
 
+// ... existing searchSpotifyArtists ...
 export async function searchSpotifyArtists(query: string, offset: number = 0): Promise<Artist[]> {
   try {
     const url = `${API_URL}/spotify/search?q=${encodeURIComponent(query)}&offset=${offset}`;
@@ -104,3 +105,43 @@ export async function searchSpotifyArtists(query: string, offset: number = 0): P
     return [];
   }
 }
+
+export async function getConcertRecommendations(seedArtistName: string, city?: string, latlong?: string, radius?: number): Promise<{ seed: string, events: Event[] }> {
+    try {
+        const params = new URLSearchParams({
+            seed_artist_name: seedArtistName
+        });
+        if (city) params.append('city', city);
+        if (latlong) params.append('latlong', latlong);
+        if (radius) params.append('radius', String(radius)); 
+        else params.append('radius', '50'); // Default radius
+        
+        const url = `${API_URL}/recommendations/concerts?${params.toString()}`;
+        console.log(`📡 [API] Fetching Recs: ${url}`);
+        const res = await fetch(url);
+        if (!res.ok) {
+            console.warn(`TM Recs failed for ${seedArtistName}: ${res.status}`);
+            return { seed: seedArtistName, events: [] };
+        }
+        const data = await res.json();
+        
+        const mappedEvents: Event[] = (data.events || []).map((e: any) => ({
+             id: e.id,
+             name: e.name,
+             date: e.dates?.start?.localDate,
+             venue: e._embedded?.venues?.[0]?.name,
+             city: e._embedded?.venues?.[0]?.city?.name,
+             country: e._embedded?.venues?.[0]?.country?.name,
+             image: e.images?.[0]?.url,
+             url: e.url,
+             artistName: e._embedded?.attractions?.[0]?.name || "Unknown Artist"
+        }));
+
+        return { seed: data.seed || seedArtistName, events: mappedEvents };
+
+    } catch (e) {
+        console.error('getConcertRecommendations Error:', e);
+        return { seed: seedArtistName, events: [] };
+    }
+}
+

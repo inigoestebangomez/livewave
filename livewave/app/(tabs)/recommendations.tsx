@@ -1,10 +1,11 @@
 import { StyleSheet, Text, View, ScrollView, Image, Dimensions, RefreshControl, TouchableOpacity, Linking, FlatList } from 'react-native'
+import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import React, { useEffect, useState, useCallback } from 'react'
 import { useUser } from '@supabase/auth-helpers-react'
 import { supabase } from '../lib/supabase'
-import { getRecommendations, getEventsForArtist, RecommendationResponse, Event } from '../lib/api'
+import { getEventsForArtist, getConcertRecommendations, Event } from '../lib/api'
 import { Ionicons } from '@expo/vector-icons'
 
 const screenWidth = Dimensions.get('window').width
@@ -12,9 +13,16 @@ const screenWidth = Dimensions.get('window').width
 export default function RecommendationsScreen() {
   const insets = useSafeAreaInsets()
   const user = useUser()
+  
+  useEffect(() => {
+      console.log('🚀 [Recommendations] Component Mounted (New Version)');
+  }, []);
+
   const [loading, setLoading] = useState(true)
-  const [recommendations, setRecommendations] = useState<RecommendationResponse | null>(null)
+  const [seedArtist, setSeedArtist] = useState<string | null>(null)
+  const [recommendedEvents, setRecommendedEvents] = useState<Event[]>([])
   const [yourEvents, setYourEvents] = useState<Event[]>([])
+  const [userCity, setUserCity] = useState<string | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -51,6 +59,37 @@ export default function RecommendationsScreen() {
 
 
         // B. GET RECOMMENDATIONS (Discover)
+        // 1. Get User Location from Profile
+        let locationCity: string | undefined = undefined;
+        let userLatLong: string | undefined = undefined;
+        let userRadius = 50; 
+
+        const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('location, location_latitude, location_longitude, radius_km') // Correct column names
+            .eq('id', user.id)
+            .single()
+        
+        console.log(`👤 [Recommendations] User ID: ${user.id}`);
+        // console.log(`👤 Profile:`, profile); // Reduce noise
+        if (profileError) console.error(`❌ [Recommendations] Profile Fetch Error:`, profileError);
+        
+        if (profile) {
+            if (profile.radius_km) {
+                userRadius = profile.radius_km;
+            }
+
+            // Priority 1: Lat/Long (Most accurate)
+            if (profile.location_latitude && profile.location_longitude) {
+                userLatLong = `${profile.location_latitude},${profile.location_longitude}`;
+                setUserCity('My Location'); // Fallback name for UI
+                console.log(`📍 Using Coords: ${userLatLong} (Radius: ${userRadius}km)`);
+            }
+            
+            // Priority 2: City String (if available in a text column, currently 'location' is hex so we likely skip this unless we add a specific city column)
+            // For now, reverse geocoding on every load is expensive. We rely on LatLong.
+        }
+
         let seedName: string | null = null;
         
         // 1. Try to use a random followed artist as seed
@@ -93,24 +132,40 @@ export default function RecommendationsScreen() {
             
             if (userGenres && userGenres.length > 0) {
                 const randomGenre = userGenres[Math.floor(Math.random() * userGenres.length)].genre
-                // We need to find an artist for this genre to use as seed. 
-                // For now, let's use a mapping or a generic search if possible.
-                // Simpler hack: Use a popular artist for that genre (hardcoded list for now or search API)
-                // Let's rely on api.ts to handle "Genre" seeds if we modify it, or just pick a safe fallback based on genre.
-                if (randomGenre === 'rock') seedName = 'Foo Fighters';
+                // Manual mapping for common genres to popular artists for seeding
+                if (randomGenre === 'rock') seedName = 'Muse'; // Changed to Muse as FF might be too generic
                 else if (randomGenre === 'pop') seedName = 'Dua Lipa';
                 else if (randomGenre === 'hip-hop') seedName = 'Kendrick Lamar';
                 else if (randomGenre === 'electronic') seedName = 'Daft Punk';
                 else if (randomGenre === 'metal') seedName = 'Metallica';
-                else seedName = 'Coldplay'; // Ultimate fallback if gender unknown
+                else seedName = 'Coldplay'; 
             } else {
                  seedName = 'Coldplay'; // No data at all
             }
         }
 
         if (seedName) {
-             const recs = await getRecommendations(seedName);
-             setRecommendations(recs);
+             setSeedArtist(seedName);
+             console.log(`Getting Concert Recs for ${seedName} in ${locationCity || 'Anywhere'}`);
+             
+             // call new API using local variables to avoid stale state
+             const response = await getConcertRecommendations(seedName, locationCity, userLatLong, userRadius);
+             
+             if (response && response.events) {
+                 // Dedup: Create map by Event ID
+                 const uniqueEventsMap = new Map();
+                 response.events.forEach((item: Event) => {
+                     // Check if an event with this ID exists
+                     if (!uniqueEventsMap.has(item.id)) {
+                         // Optional: Check if we already have an event for this artist on this date?
+                         // For now, ID dedup is enough to stop exact duplicates.
+                         uniqueEventsMap.set(item.id, item);
+                     }
+                 });
+                 setRecommendedEvents(Array.from(uniqueEventsMap.values()));
+             } else {
+                 setRecommendedEvents([]);
+             }
         }
 
     } catch (error) {
@@ -120,9 +175,12 @@ export default function RecommendationsScreen() {
     }
   }, [user])
 
-  useEffect(() => {
-    fetchData()
-  }, [user, fetchData])
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🚀 [Recommendations] Screen Focused - Refreshing Data');
+      fetchData();
+    }, [fetchData])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -190,32 +248,44 @@ export default function RecommendationsScreen() {
         <View style={styles.section}>
             <View style={styles.sectionHeader}>
                 <Ionicons name="compass" size={18} color="#b10404" />
-                <Text style={styles.sectionTitle}>Discover</Text>
+                <View style={{flex: 1}}>
+                    <Text style={styles.sectionTitle}>Discover</Text>
+                     {/* Debug / Info Location */}
+                     {userCity && <Text style={{color:'#666', fontSize: 10}}>Near {userCity}</Text>}
+                </View>
                 <Text style={styles.sectionSubtitle}>
-                    {recommendations ? `Because you like ${recommendations.seed}` : 'Similar to your taste'}
+                    {seedArtist ? `Because you like ${seedArtist}` : 'Similar to your taste'}
                 </Text>
             </View>
             
-            <View style={styles.grid}>
-                {recommendations?.recommendations.map((artist) => (
+            {/* NEW: Vertical List for Better Visibility */}
+            {recommendedEvents.length > 0 ? (
+                <View style={{ paddingHorizontal: 15 }}>
+                  {recommendedEvents.map((item) => (
                     <TouchableOpacity 
-                        key={artist.id} 
-                        style={styles.card}
-                        onPress={() => openLink(artist.external_url)}
+                        key={item.id} 
+                        style={styles.verticalCard} 
+                        onPress={() => openLink(item.url)}
                     >
-                        <Image
-                            source={{ uri: artist.image || 'https://via.placeholder.com/300x300?text=Artist' }}
-                            style={styles.artistImage}
+                        <Image 
+                            source={{ uri: item.image || 'https://via.placeholder.com/150' }} 
+                            style={styles.verticalCardImage} 
                         />
-                        <Text style={styles.artistName} numberOfLines={1}>{artist.name}</Text>
-                        {artist.genres && artist.genres.length > 0 && (
-                            <Text style={styles.genreText} numberOfLines={1}>{artist.genres[0]}</Text>
-                        )}
+                        <View style={styles.verticalCardContent}>
+                            <Text style={styles.eventArtist}>{item.artistName}</Text>
+                            <Text style={styles.eventDate}>
+                                {new Date(item.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                            </Text>
+                            <Text style={styles.eventVenue} numberOfLines={1}>{item.venue}, {item.city}</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color="#666" />
                     </TouchableOpacity>
-                ))}
-            </View>
-             {(!recommendations || recommendations.recommendations.length === 0) && !loading && (
-                 <Text style={styles.emptyText}>No recommendations found.</Text>
+                  ))}
+                </View>
+            ) : (
+                 <Text style={styles.emptyText}>
+                    {seedArtist ? `No concerts found for similar artists.` : 'No recommendations found.'}
+                 </Text>
             )}
         </View>
 
@@ -294,42 +364,32 @@ const styles = StyleSheet.create({
     color: '#ccc',
     fontSize: 12,
   },
-  // Discover Grid
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    paddingHorizontal: 15,
+
+  // Vertical Card
+  verticalCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'rgba(255,255,255,0.05)',
+      marginBottom: 10,
+      borderRadius: 12,
+      padding: 10,
   },
-  card: {
-    width: (screenWidth - 45) / 2, 
-    marginBottom: 20,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 16,
-    padding: 10,
-    alignItems: 'center',
+  verticalCardImage: {
+      width: 60,
+      height: 60,
+      borderRadius: 8,
+      marginRight: 15,
   },
-  artistImage: {
-    width: '100%',
-    aspectRatio: 1,
-    borderRadius: 12,
-    marginBottom: 10,
+  verticalCardContent: {
+      flex: 1,
   },
-  artistName: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  genreText: {
-    color: '#aaa',
-    fontSize: 12,
-    textAlign: 'center',
-  },
+
   emptyText: {
     color: '#aaa',
     textAlign: 'center',
     marginTop: 50,
   }
 })
+
+
+

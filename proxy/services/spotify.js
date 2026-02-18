@@ -48,6 +48,9 @@ export const SpotifyService = {
     try {
       return await executeWithRetry(async () => {
         const data = await spotifyApi.searchArtists(query, { limit: 10, offset });
+        if (data.body.artists.items.length > 0) {
+             console.log(`🔍 [SpotifyService] Full Artist Object: ${JSON.stringify(data.body.artists.items[0])}`);
+        }
         return data.body.artists.items.map(artist => ({
           id: artist.id,
           name: artist.name,
@@ -68,29 +71,108 @@ export const SpotifyService = {
   },
 
   // Get recommendations based on seed artists
-  getRecommendations: async (seedArtistIds) => {
+  getRecommendations: async (seedArtistIds, seedGenres = []) => {
     try {
       return await executeWithRetry(async () => {
-        const data = await spotifyApi.getRecommendations({
-            seed_artists: seedArtistIds.slice(0, 5), // Max 5 seeds
-            min_popularity: 20 // Lower threshold
-        });
+        const seedId = seedArtistIds[0];
+        console.log(`🔍 [SpotifyService] getting Related Artists (Manual Fetch) for seed: ${seedId}`);
         
-        // Map Track -> Artist (Deduping required later, but for now just return the primary artist of the track)
-        return data.body.tracks.map(track => ({
-            id: track.artists[0].id,
-            name: track.artists[0].name, // Display Artist Name, NOT Track Name
-            track_name: track.name,
-            image: track.album.images[0]?.url,
-            genres: [], // Tracks don't have genres, artists do. leave empty.
-            popularity: track.popularity,
-            external_url: track.external_urls.spotify
+        // Manual fetch for Related Artists to verify if it works (Library gave 403)
+        const token = spotifyApi.getAccessToken();
+        const url = `https://api.spotify.com/v1/artists/${seedId}/related-artists`;
+        
+        const response = await fetch(url, {
+             headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+             const errorText = await response.text();
+             console.error(`❌ Spotify Related Artists Error (${response.status}): ${errorText}`);
+             // If this fails, THEN fall back to genre search?
+             // For now let's just throw to see if it works.
+             throw new Error(`Spotify API Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const artists = data.artists || [];
+
+        // Return top 10 related artists
+        return artists.slice(0, 10).map(artist => ({
+            id: artist.id,
+            name: artist.name,
+            image: artist.images?.[0]?.url,
+            genres: artist.genres,
+            popularity: artist.popularity,
+            external_url: artist.external_urls.spotify
         }));
       });
     } catch (err) {
-      console.error('Spotify Recommendations Error:', err.statusCode, err.body || err.message);
-      return [];
+      console.error('Spotify Related Artists Error:', err.message);
+      // Fallback to Genre Search if Related Artists fails
+      return SpotifyService.getRecommendationsByGenre(seedArtistIds, seedGenres);
     }
+  },
+
+  getRecommendationsByGenre: async (seedArtistIds, seedGenres) => {
+     try {
+       // executeWithRetry is likely wrapping this call from the outside or we should wrap it here? 
+       // Since it's called from catch block of getRecommendations which is arguably inside executeWithRetry's scope if using `call`, 
+       // but here we are calling a method. Let's just run logic.
+       
+        const seedId = seedArtistIds[0];
+        let seedGenre;
+
+        if (seedGenres && seedGenres.length > 0) {
+            seedGenre = seedGenres[0];
+        } else {
+             // 2. Fallback: Get Seed Artist details to find their genre
+            try {
+                // Ensure we have a valid token if we need to fetch
+                const token = spotifyApi.getAccessToken();
+                const rawRes = await fetch(`https://api.spotify.com/v1/artists/${seedId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const rawBody = await rawRes.json();
+                console.log(`🔍 [SpotifyService] RAW FETCH getArtist: ${JSON.stringify(rawBody)}`);
+                
+                if (rawBody.genres && rawBody.genres.length > 0) {
+                    seedGenre = rawBody.genres[0];
+                }
+            } catch (e) {
+                 console.warn(`⚠️ Could not fetch artist ${seedId} for genre fallback: ${e.message}`); 
+            }
+        }
+
+        if (!seedGenre) {
+            console.log(`⚠️ Artist ${seedId} has no genres. Using 'pop' as fallback.`);
+            seedGenre = 'pop'; 
+        }
+        
+        // Improve Genre selection: Don't just use the first one if it's "pop".
+        // Try to find a more specific one if multiple exist? 
+        // For now, let's just use what we have but ensure we actually HAVE it from the proxy call.
+
+        console.log(`🔍 [SpotifyService] Fallback: Using genre '${seedGenre}' for recommendations`);
+        
+        // Randomize offset to avoid same results
+        const randomOffset = Math.floor(Math.random() * 50); 
+        const searchRes = await spotifyApi.searchArtists(`genre:"${seedGenre}"`, { limit: 10, offset: randomOffset });
+        
+        if (!searchRes.body.artists || !searchRes.body.artists.items) return [];
+
+        return searchRes.body.artists.items
+            .filter(a => a.id !== seedId)
+            .slice(0, 10)
+            .map(artist => ({
+                id: artist.id,
+                name: artist.name,
+                image: artist.images?.[0]?.url,
+                genres: artist.genres,
+                popularity: artist.popularity,
+                external_url: artist.external_urls.spotify
+            }));
+     } catch (e) {
+         console.error("Genre Fallback Error:", e);
+         return [];
+     }
   },
 
   // Get related artists
