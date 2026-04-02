@@ -10,41 +10,32 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
-  DeviceEventEmitter,
-  Alert,
   Animated
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { supabase } from '../lib/supabase'
-import slugify from 'slugify'
-import { API_URL } from '../lib/api'
-
-// import { LinearGradient } from 'expo-linear-gradient'
+import { useSearchArtist } from '../../hooks'
 
 const screenWidth = Dimensions.get('window').width
 const screenHeight = Dimensions.get('window').height
 
-// Normalize country name variants so filter pills don't duplicate
 const normalizeCountry = (name: string): string => {
-  const n = name.trim();
-  if (['Spain', 'Espana', 'España'].includes(n)) return 'España';
-  if (['Germany', 'Deutschland', 'Alemania'].includes(n)) return 'Deutschland';
-  if (['France', 'Francia'].includes(n)) return 'France';
-  return n;
-};
+  const n = name.trim()
+  if (['Spain', 'Espana', 'España'].includes(n)) return 'España'
+  if (['Germany', 'Deutschland', 'Alemania'].includes(n)) return 'Deutschland'
+  if (['France', 'Francia'].includes(n)) return 'France'
+  return n
+}
 
 export default function SearchScreen() {
-  const [query, setQuery] = useState('')
-  const [isFocused, setIsFocused] = useState(false)
-  const [suggestions, setSuggestions] = useState<any[]>([])
-  const [selectedArtist, setSelectedArtist] = useState<any | null>(null)
-  const [events, setEvents] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [selectedCountry, setSelectedCountry] = useState<string>('all')
-  const [selectedCity, setSelectedCity] = useState<string>('all')
-  const [showAdded, setShowAdded] = useState(false)
+  const {
+    query, suggestions, selectedArtist, events, loading, showAdded,
+    handleSearchChange, selectArtist, addToCalendar, clearSearch,
+  } = useSearchArtist()
 
+  const [isFocused, setIsFocused] = useState(false)
+  const [selectedCountry, setSelectedCountry] = useState('all')
+  const [selectedCity, setSelectedCity] = useState('all')
   const insets = useSafeAreaInsets()
 
   const filteredEvents = useMemo(() => {
@@ -80,326 +71,110 @@ export default function SearchScreen() {
     return Array.from(citySet).sort()
   }, [events, selectedCountry])
 
-  const handleSearchChange = async (query: string) => {
-    setQuery(query)
-    if (query.length < 2) {
-      setSuggestions([])
-      return
-    }
-    try {
-      const response = await fetch(`${API_URL}/suggest?keyword=${encodeURIComponent(query)}`)
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-      const data = await response.json()
-      setSuggestions(data?._embedded?.attractions || [])
-    } catch (err) {
-      console.error('Error fetching suggestions', err)
-      setSuggestions([])
-    }
-  }
-
-  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-  const fetchAllEvents = async (artistName: string) => {
-    let allEvents: any[] = []
-    let page = 0
-    let hasMorePages = true
-    const maxPages = 3
-    const pageSize = 50
-    const delayBetweenRequests = 500
-    setLoading(true)
-    try {
-      while (hasMorePages && page < maxPages) {
-        if (page > 0) await sleep(delayBetweenRequests)
-        const response = await fetch(`${API_URL}/events?keyword=${encodeURIComponent(artistName)}&page=${page}&size=${pageSize}`)
-        if (!response.ok) {
-          if (response.status === 429) {
-            await sleep(2000)
-            const retryResponse = await fetch(`${API_URL}/events?keyword=${encodeURIComponent(artistName)}&page=${page}&size=${pageSize}`)
-            if (!retryResponse.ok) break
-            const retryData = await retryResponse.json()
-            allEvents.push(...(retryData?._embedded?.events || []))
-            page++
-            hasMorePages = page < (retryData.page?.totalPages || 1) && page < maxPages
-          } else {
-            break
-          }
-        } else {
-          const data = await response.json()
-          allEvents.push(...(data?._embedded?.events || []))
-          page++
-          hasMorePages = page < (data.page?.totalPages || 1) && page < maxPages
-        }
-      }
-      const deduped = Array.from(new Map(allEvents.map(e => [`${e.id}-${e.dates?.start?.localDate}`, e])).values())
-      return deduped
-    } catch (err) {
-      console.error('Error fetching events', err)
-      return allEvents
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const selectArtist = async (artist: any) => {
-    setSelectedArtist(artist)
-    setSuggestions([])
-    setQuery(artist.name)
-
-    const allEvents = await fetchAllEvents(artist.name)
-    setEvents(allEvents)
-  }
-
-  const addToCalendar = async (event: any) => {
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    console.error('No se pudo obtener el usuario:', userError)
-    return
-  }
-
-  const artistName = event._embedded?.attractions?.[0]?.name
-  const artistSlug = slugify(artistName, { lower: true })
-
-// Usa la imagen de selectedArtist si está disponible, si no, usa la del evento
-const artistImages = selectedArtist?.images || event._embedded?.attractions?.[0]?.images || []
-const sortedImages = artistImages.sort((a: any, b: any) => (b.width || 0) - (a.width || 0))
-const imageUrl = sortedImages[0]?.url || ''
-
-  // Upsert del artista con imagen incluida
-  const { data: artist, error: artistError } = await supabase
-    .from('artists')
-    .upsert(
-      {
-        name: artistName,
-        slug: artistSlug,
-        image_url: imageUrl,
-      },
-      {
-        onConflict: 'slug',
-      }
-    )
-    .select()
-    .single()
-
-  if (artistError) {
-    console.error('Error inserting artist:', artistError)
-    return
-  }
-
-  const date = event.dates?.start?.dateTime || event.dates?.start?.localDate
-  const venue = event._embedded?.venues?.[0]?.name || ''
-  const city = event._embedded?.venues?.[0]?.city?.name || ''
-  const country = event._embedded?.venues?.[0]?.country?.name || ''
-  const externalUrl = event.url || ''
-  
-  // Conflict Check
-  const eventDateStr = new Date(date).toISOString().split('T')[0];
-  const { data: existingEvents, error: conflictError } = await supabase
-    .from('user_events')
-    .select('event_id, events(date)')
-    .eq('user_id', user.id);
-
-  if (!conflictError && existingEvents) {
-     const hasConflict = existingEvents.some((e: any) => {
-         if (!e.events?.date) return false;
-         const d = new Date(e.events.date).toISOString().split('T')[0];
-         return d === eventDateStr;
-     });
-
-     if (hasConflict) {
-         Alert.alert(
-             "Conflict Detected",
-             "You already have a concert saved on this date. Do you want to add this one anyway?",
-             [
-                 { text: "Cancel", style: "cancel" },
-                 { text: "Add Anyway", onPress: () => proceedToAdd(artist, city, country, venue, date, externalUrl, user.id) }
-             ]
-         );
-         return;
-     }
-  }
-
-  await proceedToAdd(artist, city, country, venue, date, externalUrl, user.id);
-}
-
-const proceedToAdd = async (artist: any, city: string, country: string, venue: string, date: string, externalUrl: string, userId: string) => {
-
-
-  const { data: newEvent, error: eventError } = await supabase
-    .from('events')
-    .upsert(
-      {
-        artist_id: artist.id,
-        city,
-        country,
-        venue,
-        date,
-        external_url: externalUrl,
-      },
-      {
-        onConflict: 'artist_id,date,venue',
-      }
-    )
-    .select()
-    .single()
-
-  if (eventError) {
-    console.error('Error inserting event:', eventError)
-    return
-  }
-
-  // Asociar evento con el usuario
-  const { error: relError } = await supabase
-    .from('user_events')
-    .upsert(
-      { user_id: userId, event_id: newEvent.id },
-      { onConflict: 'user_id,event_id' }
-    )
-
-  if (relError) {
-    console.error('Error saving to user_events:', relError)
-  } else {
-    setShowAdded(true)
-  DeviceEventEmitter.emit('refreshEvents')
-  setTimeout(() => setShowAdded(false), 2000)
-  }
-}
-
-
-  const clearSearch = () => {
-    setQuery('')
-    setSuggestions([])
-    setSelectedArtist(null)
-    setEvents([])
+  const onClearSearch = () => {
+    clearSearch()
     setSelectedCountry('all')
     setSelectedCity('all')
   }
 
-  // Parallax Logic
-  const scrollY = React.useRef(new Animated.Value(0)).current;
-
-  // Search Bar Animation
-  const searchAnim = React.useRef(new Animated.Value(0)).current;
+  const scrollY = React.useRef(new Animated.Value(0)).current
+  const searchAnim = React.useRef(new Animated.Value(0)).current
 
   React.useEffect(() => {
     Animated.spring(searchAnim, {
       toValue: (isFocused || query.length > 0 || selectedArtist) ? 1 : 0,
       useNativeDriver: true,
       bounciness: 4,
-    }).start();
-  }, [isFocused, query, selectedArtist]);
+    }).start()
+  }, [isFocused, query, selectedArtist])
 
   const searchTranslateY = searchAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [screenHeight * 0.3, 0]
-  });
+  })
 
-  // Header Animation
-  const headerHeight = 220;
-  const minHeaderHeight = 80; // Collapsed height (approx)
-  
+  const headerHeight = 220
+  const minHeaderHeight = 80
+
   const imageScale = scrollY.interpolate({
-      inputRange: [-headerHeight, 0, headerHeight],
-      outputRange: [1.5, 1, 0.3], // Scale down to 30%
-      extrapolate: 'clamp'
-  });
+    inputRange: [-headerHeight, 0, headerHeight],
+    outputRange: [1.5, 1, 0.3],
+    extrapolate: 'clamp'
+  })
 
   const imageTranslateY = scrollY.interpolate({
-      inputRange: [-headerHeight, 0, headerHeight],
-      outputRange: [0, 0, -headerHeight/2], // Move up slightly
-      extrapolate: 'clamp'
-  });
+    inputRange: [-headerHeight, 0, headerHeight],
+    outputRange: [0, 0, -headerHeight/2],
+    extrapolate: 'clamp'
+  })
 
   const headerOpacity = scrollY.interpolate({
-      inputRange: [0, headerHeight - minHeaderHeight],
-      outputRange: [1, 0],
-      extrapolate: 'clamp'
-  });
+    inputRange: [0, headerHeight - minHeaderHeight],
+    outputRange: [1, 0],
+    extrapolate: 'clamp'
+  })
 
   const renderHeader = () => (
-      <Animated.View style={[styles.artistHeader, { 
-          opacity: headerOpacity,
-          transform: [{ translateY: imageTranslateY }, { scale: imageScale }] 
-      }]}>
-          <Image
-            source={{ uri: selectedArtist?.images?.[0]?.url }}
-            style={styles.artistImage}
-            resizeMode="cover"
-          />
-          <Text style={styles.artistTitle}>{selectedArtist.name}</Text>
-          {loading && (
-            <Text style={styles.loadingText}>Loading events...</Text>
-          )}
-      </Animated.View>
-  );
+    <Animated.View style={[styles.artistHeader, { 
+        opacity: headerOpacity,
+        transform: [{ translateY: imageTranslateY }, { scale: imageScale }] 
+    }]}>
+        <Image
+          source={{ uri: selectedArtist?.images?.[0]?.url }}
+          style={styles.artistImage}
+          resizeMode="cover"
+        />
+        <Text style={styles.artistTitle}>{selectedArtist?.name}</Text>
+        {loading && <Text style={styles.loadingText}>Loading events...</Text>}
+    </Animated.View>
+  )
 
   const renderFilters = () => (
-      <View style={styles.filtersContainer}>
-        <View style={styles.filterHeader}>
-          <Text style={styles.filtersTitle}>Filters</Text>
-          <Text style={styles.eventCount}>
-            {filteredEvents.length} of {events.length} events
-          </Text>
-        </View>
-        
+    <View style={styles.filtersContainer}>
+      <View style={styles.filterHeader}>
+        <Text style={styles.filtersTitle}>Filters</Text>
+        <Text style={styles.eventCount}>{filteredEvents.length} of {events.length} events</Text>
+      </View>
+      
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
+        <TouchableOpacity 
+          style={[styles.filterButton, selectedCountry === 'all' && styles.filterButtonActive]}
+          onPress={() => { setSelectedCountry('all'); setSelectedCity('all') }}
+        >
+          <Text style={[styles.filterText, selectedCountry === 'all' && styles.filterTextActive]}>All countries</Text>
+        </TouchableOpacity>
+        {countries.map(country => (
+          <TouchableOpacity 
+            key={country}
+            style={[styles.filterButton, selectedCountry === country && styles.filterButtonActive]}
+            onPress={() => { setSelectedCountry(country); setSelectedCity('all') }}
+          >
+            <Text style={[styles.filterText, selectedCountry === country && styles.filterTextActive]}>{country}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {cities.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
           <TouchableOpacity 
-            style={[styles.filterButton, selectedCountry === 'all' && styles.filterButtonActive]}
-            onPress={() => {
-              setSelectedCountry('all')
-              setSelectedCity('all')
-            }}
+            style={[styles.filterButton, selectedCity === 'all' && styles.filterButtonActive]}
+            onPress={() => setSelectedCity('all')}
           >
-            <Text style={[styles.filterText, selectedCountry === 'all' && styles.filterTextActive]}>
-              All countries
-            </Text>
+            <Text style={[styles.filterText, selectedCity === 'all' && styles.filterTextActive]}>All cities</Text>
           </TouchableOpacity>
-          
-          {countries.map(country => (
+          {cities.map(city => (
             <TouchableOpacity 
-              key={country}
-              style={[styles.filterButton, selectedCountry === country && styles.filterButtonActive]}
-              onPress={() => {
-                setSelectedCountry(country)
-                setSelectedCity('all')
-              }}
+              key={city}
+              style={[styles.filterButton, selectedCity === city && styles.filterButtonActive]}
+              onPress={() => setSelectedCity(city)}
             >
-              <Text style={[styles.filterText, selectedCountry === country && styles.filterTextActive]}>
-                {country}
-              </Text>
+              <Text style={[styles.filterText, selectedCity === city && styles.filterTextActive]}>{city}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
-
-        {cities.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-            <TouchableOpacity 
-              style={[styles.filterButton, selectedCity === 'all' && styles.filterButtonActive]}
-              onPress={() => setSelectedCity('all')}
-            >
-              <Text style={[styles.filterText, selectedCity === 'all' && styles.filterTextActive]}>
-                All cities
-              </Text>
-            </TouchableOpacity>
-            
-            {cities.map(city => (
-              <TouchableOpacity 
-                key={city}
-                style={[styles.filterButton, selectedCity === city && styles.filterButtonActive]}
-                onPress={() => setSelectedCity(city)}
-              >
-                <Text style={[styles.filterText, selectedCity === city && styles.filterTextActive]}>
-                  {city}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-      </View>
-  );
+      )}
+    </View>
+  )
 
   return (
     <ImageBackground
@@ -419,7 +194,7 @@ const proceedToAdd = async (artist: any, city: string, country: string, venue: s
             onBlur={() => setIsFocused(false)}
           />
           {(selectedArtist || query.length > 0) && (
-            <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+            <TouchableOpacity onPress={onClearSearch} style={styles.clearButton}>
               <Ionicons name="close-circle" size={30} color="#ccc" />
             </TouchableOpacity>
           )}
@@ -428,15 +203,12 @@ const proceedToAdd = async (artist: any, city: string, country: string, venue: s
         {!selectedArtist && suggestions.length > 0 && (
           <FlatList
             data={suggestions}
-            keyExtractor={(item, index) => `${item.id}-${item.dates?.start?.localDate || index}`}
+            keyExtractor={(item, index) => `${item.id}-${index}`}
             renderItem={({ item }) => (
               <TouchableOpacity onPress={() => selectArtist(item)} style={styles.suggestionItem}>
                 <View style={styles.suggestionContent}>
                   {item.images?.[0]?.url && (
-                    <Image 
-                      source={{ uri: item.images[0].url }} 
-                      style={styles.suggestionImage}
-                    />
+                    <Image source={{ uri: item.images[0].url }} style={styles.suggestionImage} />
                   )}
                   <View>
                     <Text style={styles.suggestionText}>{item.name}</Text>
@@ -453,55 +225,51 @@ const proceedToAdd = async (artist: any, city: string, country: string, venue: s
         )}
 
         {selectedArtist && (
-             <Animated.FlatList
-                data={filteredEvents.length > 0 ? filteredEvents : []}
-                keyExtractor={(item: any, index: number) => `${item.id}-${item.dates?.start?.localDate || index}`}
-                ListHeaderComponent={() => (
-                    <View>
-                        {renderHeader()}
-                        {events.length > 0 && renderFilters()}
-                        {!loading && filteredEvents.length === 0 && (
-                             <View style={styles.noEventsContainer}>
-                                <Text style={styles.noEventsText}>
-                                  {events.length > 0 ? "No events at this location" : `Ooops! ${selectedArtist.name} has no upcoming shows...`}
-                                </Text>
-                              </View>
-                        )}
-                    </View>
-                )}
-                contentContainerStyle={{ paddingBottom: 120, paddingTop: 0 }}
-                scrollEventThrottle={16}
-                onScroll={Animated.event(
-                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-                    { useNativeDriver: false }
-                )}
-                renderItem={({ item }: { item: any }) => (
-                  <View style={styles.card}>
-                    <View style={styles.cardContent}>
-                      <Text style={styles.cardTitle}>{item.name}</Text>
-                      <Text style={styles.cardSubtitle}>
-                        {item.dates?.start?.localDate} - {item._embedded?.venues?.[0]?.name}
-                      </Text>
-                      <Text style={styles.cardLocation}>
-                        {item._embedded?.venues?.[0]?.city?.name}, {item._embedded?.venues?.[0]?.country?.name}
+          <Animated.FlatList
+            data={filteredEvents}
+            keyExtractor={(item, index) => `${item.id}-${item.dates?.start?.localDate || index}`}
+            ListHeaderComponent={() => (
+              <View>
+                  {renderHeader()}
+                  {events.length > 0 && renderFilters()}
+                  {!loading && filteredEvents.length === 0 && (
+                    <View style={styles.noEventsContainer}>
+                      <Text style={styles.noEventsText}>
+                        {events.length > 0 ? "No events at this location" : `Ooops! ${selectedArtist.name} has no upcoming shows...`}
                       </Text>
                     </View>
-                    <TouchableOpacity
-                      style={styles.calendarButton}
-                      onPress={() => addToCalendar(item)}>
-                      <Ionicons name="calendar-outline" size={18} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-             />
+                  )}
+              </View>
+            )}
+            contentContainerStyle={{ paddingBottom: 120, paddingTop: 0 }}
+            scrollEventThrottle={16}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: false }
+            )}
+            renderItem={({ item }) => (
+              <View style={styles.card}>
+                <View style={styles.cardContent}>
+                  <Text style={styles.cardTitle}>{item.name}</Text>
+                  <Text style={styles.cardSubtitle}>
+                    {item.dates?.start?.localDate} - {item._embedded?.venues?.[0]?.name}
+                  </Text>
+                  <Text style={styles.cardLocation}>
+                    {item._embedded?.venues?.[0]?.city?.name}, {item._embedded?.venues?.[0]?.country?.name}
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.calendarButton} onPress={() => addToCalendar(item)}>
+                  <Ionicons name="calendar-outline" size={18} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            )}
+          />
         )}
       </View>
 
       {showAdded && (
         <View style={styles.addedShowContainer}>
-          <Text style={styles.addedShow}>
-            Show added!
-          </Text>
+          <Text style={styles.addedShow}>Show added!</Text>
         </View>
       )}
     </ImageBackground>
@@ -509,201 +277,38 @@ const proceedToAdd = async (artist: any, city: string, country: string, venue: s
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    padding: 20,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 30,
-    marginTop: 20
-  },
-  input: {
-    flex: 1,
-    backgroundColor: 'rgba(24, 24, 24, 0.6)',
-    color: '#fff',
-    padding: 20,
-    borderRadius: 30,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(34, 34, 34, 0.2)',
-  },
-  clearButton: {
-    marginLeft: 10,
-    padding: 5,
-  },
-  suggestionsList: {
-    maxHeight: 500,
-  },
-  suggestionItem: {
-    backgroundColor: 'rgba(24, 24, 24, 0.85)',
-    padding: 15,
-    marginBottom: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(34, 34, 34, 0.2)',
-  },
-  suggestionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  suggestionImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    marginRight: 12,
-  },
-  suggestionText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  suggestionSubtext: {
-    color: '#ccc',
-    fontSize: 14,
-    marginTop: 2,
-  },
-  artistHeader: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  artistImage: {
-    width: screenWidth * 0.9,
-    height: 220,
-    borderRadius: 10,
-    marginBottom: 15,
-  },
-  artistTitle: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  loadingText: {
-    color: '#ccc',
-    fontSize: 14,
-    marginTop: 10,
-    fontStyle: 'italic',
-  },
-  card: {
-    backgroundColor: 'rgba(24, 24, 24, 0.85)',
-    padding: 20,
-    marginBottom: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(34, 34, 34, 0.2)',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  cardContent: {
-    flex: 1,
-    marginRight: 15,
-  },
-  cardTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  cardSubtitle: {
-    color: '#ccc',
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  cardLocation: {
-    color: '#aaa',
-    fontSize: 12,
-  },
-  calendarButton: {
-    backgroundColor: '#b10404',
-    padding: 12,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'flex-end',
-  },
-  noEventsContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  noEventsText: {
-    color: '#ccc',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  eventsContainer: {
-    flex: 1,
-    marginBottom: 70
-  },
-  eventsList: {
-    flex: 1,
-  },
-  filtersContainer: {
-    marginBottom: 15,
-  },
-  filterHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  filtersTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  eventCount: {
-    color: '#ccc',
-    fontSize: 14,
-  },
-  filterRow: {
-    marginBottom: 8,
-  },
-  filterButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  filterButtonActive: {
-    backgroundColor: '#b10404',
-    borderColor: '#b10404',
-  },
-  filterText: {
-    color: '#ccc',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  filterTextActive: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  addedShowContainer: {
-    position: 'absolute', 
-    bottom: 140, 
-    left: 0, 
-    right: 0, 
-    zIndex: 100,
-    alignItems: 'center'
-  },
-  addedShow: {
-    backgroundColor: '#b10404', 
-    color: '#fff', 
-    padding: 12,
-    borderRadius: 20, 
-    fontWeight: 'bold', 
-    fontSize: 16
-  }
+  background: { flex: 1 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.7)', padding: 20 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 30, marginTop: 20 },
+  input: { flex: 1, backgroundColor: 'rgba(24, 24, 24, 0.6)', color: '#fff', padding: 20, borderRadius: 30, fontSize: 16, borderWidth: 1, borderColor: 'rgba(34, 34, 34, 0.2)' },
+  clearButton: { marginLeft: 10, padding: 5 },
+  suggestionsList: { maxHeight: 500 },
+  suggestionItem: { backgroundColor: 'rgba(24, 24, 24, 0.85)', padding: 15, marginBottom: 8, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(34, 34, 34, 0.2)' },
+  suggestionContent: { flexDirection: 'row', alignItems: 'center' },
+  suggestionImage: { width: 60, height: 60, borderRadius: 30, marginRight: 12 },
+  suggestionText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  suggestionSubtext: { color: '#ccc', fontSize: 14, marginTop: 2 },
+  artistHeader: { alignItems: 'center', marginBottom: 20 },
+  artistImage: { width: screenWidth * 0.9, height: 220, borderRadius: 10, marginBottom: 15 },
+  artistTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold', textAlign: 'center' },
+  loadingText: { color: '#ccc', fontSize: 14, marginTop: 10, fontStyle: 'italic' },
+  card: { backgroundColor: 'rgba(24, 24, 24, 0.85)', padding: 20, marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(34, 34, 34, 0.2)', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  cardContent: { flex: 1, marginRight: 15 },
+  cardTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
+  cardSubtitle: { color: '#ccc', fontSize: 14, marginBottom: 4 },
+  cardLocation: { color: '#aaa', fontSize: 12 },
+  calendarButton: { backgroundColor: '#b10404', padding: 12, width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' },
+  noEventsContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  noEventsText: { color: '#ccc', fontSize: 16, textAlign: 'center' },
+  filtersContainer: { marginBottom: 15 },
+  filterHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  filtersTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  eventCount: { color: '#ccc', fontSize: 14 },
+  filterRow: { marginBottom: 8 },
+  filterButton: { backgroundColor: 'rgba(255, 255, 255, 0.1)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.2)' },
+  filterButtonActive: { backgroundColor: '#b10404', borderColor: '#b10404' },
+  filterText: { color: '#ccc', fontSize: 14, fontWeight: '500' },
+  filterTextActive: { color: '#fff', fontWeight: '600' },
+  addedShowContainer: { position: 'absolute', bottom: 140, left: 0, right: 0, zIndex: 100, alignItems: 'center' },
+  addedShow: { backgroundColor: '#b10404', color: '#fff', padding: 12, borderRadius: 20, fontWeight: 'bold', fontSize: 16 },
 })

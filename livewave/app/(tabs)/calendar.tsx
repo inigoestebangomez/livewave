@@ -1,26 +1,32 @@
 import { supabase } from '../lib/supabase'
-import { useEffect, useState, useCallback } from 'react'
-import { Text, View, StyleSheet, DeviceEventEmitter, ScrollView, TouchableOpacity, Image, Alert, Animated, Platform, Share } from 'react-native'
+import { useState, useCallback, useEffect } from 'react'
+import { Text, View, StyleSheet, DeviceEventEmitter, ScrollView, TouchableOpacity, Image, Animated, Platform, Share } from 'react-native'
 import { useUser } from '@supabase/auth-helpers-react'
 import { LinearGradient } from 'expo-linear-gradient'
-import { Calendar, LocaleConfig } from 'react-native-calendars'
+import { Calendar } from 'react-native-calendars'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { addToNativeCalendar } from '../lib/calendar-export'
 import { Swipeable } from 'react-native-gesture-handler'
 import Toast from 'react-native-toast-message'
+import { useUserEvents } from '../../hooks'
+import type { EventWithArtist } from '../../types/supabase'
 
-// --- Custom Components ---
+const EventCard = ({ event, onPress, onExport, onShare, onDelete }: {
+  event: EventWithArtist
+  onPress: (e: EventWithArtist) => void
+  onExport: (e: EventWithArtist) => void
+  onShare: (e: EventWithArtist) => void
+  onDelete: (id: string) => void
+}) => {
+  const isPast = new Date(event.date).getTime() < new Date().setHours(0,0,0,0)
 
-const EventCard = ({ event, onPress, onExport, onShare, onDelete }: { event: any, onPress: (e: any) => void, onExport: (e: any) => void, onShare: (e: any) => void, onDelete: (id: string) => void }) => {
-  const isPast = new Date(event.date).getTime() < new Date().setHours(0,0,0,0);
-  
-  const renderRightActions = (progress: any, dragX: any) => {
+  const renderRightActions = (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
     const scale = dragX.interpolate({
       inputRange: [-80, 0],
       outputRange: [1, 0],
       extrapolate: 'clamp',
-    });
+    })
 
     return (
       <View style={styles.actionsContainer}>
@@ -31,8 +37,8 @@ const EventCard = ({ event, onPress, onExport, onShare, onDelete }: { event: any
             </Animated.View>
         </TouchableOpacity>
       </View>
-    );
-  };
+    )
+  }
 
   return (
     <View style={[styles.eventCardWrapper, isPast && { opacity: 0.4 }]}>
@@ -53,14 +59,10 @@ const EventCard = ({ event, onPress, onExport, onShare, onDelete }: { event: any
             </View>
             
             <View style={styles.cardActionsContainer}>
-                <TouchableOpacity 
-                    onPress={() => onExport(event)}
-                    style={styles.exportButton}>
+                <TouchableOpacity onPress={() => onExport(event)} style={styles.exportButton}>
                     <Ionicons name="calendar-outline" size={24} color={isPast ? "#666" : "#b10404"} />
                 </TouchableOpacity>
-                <TouchableOpacity 
-                    onPress={() => onShare(event)}
-                    style={styles.exportButton}>
+                <TouchableOpacity onPress={() => onShare(event)} style={styles.exportButton}>
                     <Ionicons name={Platform.OS === 'ios' ? 'share-outline' : 'share-social-outline'} size={24} color={isPast ? "#666" : "#b10404"} />
                 </TouchableOpacity>
             </View>
@@ -70,142 +72,76 @@ const EventCard = ({ event, onPress, onExport, onShare, onDelete }: { event: any
   )
 }
 
-
 export default function CalendarScreen() {
   const user = useUser()
-  const [markedDates, setMarkedDates] = useState({})
-  const [loading, setLoading] = useState(false)
-  const [agendaEvents, setAgendaEvents] = useState<any[]>([])
+  const { events: agendaEvents, refresh } = useUserEvents()
+  const [markedDates, setMarkedDates] = useState<Record<string, unknown>>({})
   const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined)
 
-  const handleCardPress = (event: any) => {
-    setSelectedDate(new Date(event.date).toISOString().split('T')[0]);
+  const handleCardPress = (event: EventWithArtist) => {
+    setSelectedDate(new Date(event.date).toISOString().split('T')[0])
   }
 
-  const handleExport = async (event: any) => {
-    await addToNativeCalendar(event);
+  const handleExport = async (event: EventWithArtist) => {
+    await addToNativeCalendar(event)
   }
 
-  const handleShare = async (event: any) => {
+  const handleShare = async (event: EventWithArtist) => {
     try {
-      const artistName = event.artist?.name || 'Unknown Artist';
-      const eventDate = new Date(event.date);
-      // Format: "Oct 24, 2024"
-      const dateStr = eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      const message = `Come see ${artistName} live on ${dateStr} at ${event.venue}, ${event.city}! 🎸`;
-      const url = event.external_url || 'https://livewave.app'; // Fallback to app website if no ticket URL
+      const artistName = event.artist?.name || 'Unknown Artist'
+      const dateStr = new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      const message = `Come see ${artistName} live on ${dateStr} at ${event.venue}, ${event.city}! 🎸`
+      const url = event.external_url || 'https://livewave.app'
       
       await Share.share({
         message: Platform.OS === 'android' ? `${message}\n${url}` : message,
         url: Platform.OS === 'ios' ? url : undefined,
-      });
-    } catch (error: any) {
-      console.error(error.message);
+      })
+    } catch (error: unknown) {
+      if (error instanceof Error) console.error(error.message)
     }
   }
 
   const handleDelete = async (eventId: string) => {
-    if (!user) return;
-    
-    // Optimistic Update
-    const previousEvents = [...agendaEvents];
-    setAgendaEvents(prev => prev.filter(e => e.id !== eventId));
+    if (!user) return
 
     const { error } = await supabase
         .from('user_events')
         .delete()
         .eq('user_id', user.id)
-        .eq('event_id', eventId);
+        .eq('event_id', eventId)
 
     if (error) {
-        console.error('Error deleting event:', error);
-        setAgendaEvents(previousEvents); // Rollback
-        Toast.show({ type: 'error', text1: 'Error', text2: 'Could not delete event' });
+        console.error('Error deleting event:', error)
+        Toast.show({ type: 'error', text1: 'Error', text2: 'Could not delete event' })
     } else {
-        Toast.show({ type: 'success', text1: 'Event deleted' });
-        DeviceEventEmitter.emit('refreshEvents');
-        fetchUserEvents();
+        Toast.show({ type: 'success', text1: 'Event deleted' })
+        DeviceEventEmitter.emit('refreshEvents')
+        refresh()
     }
   }
 
-  const fetchUserEvents = useCallback(async () => {
-    setLoading(true)
-    if (!user) {
-      setLoading(false)
-      return
-    }
-
-    const { data: userEvents, error: ueError } = await supabase
-      .from('user_events')
-      .select('event_id')
-      .eq('user_id', user.id)
-
-    if (ueError) {
-      console.error('Error user_events:', ueError)
-      setLoading(false)
-      return
-    }
-
-    const eventIds = userEvents?.map((ue: any) => ue.event_id) || []
-
-    if (eventIds.length === 0) {
-      setAgendaEvents([])
-      setLoading(false)
-      return
-    }
-
-    // Fetch Events with Artist Info (including IMAGE!)
-    const { data: events, error: evError } = await supabase
-      .from('events')
-      .select('id,date,venue,city,country,artist_id,artist:artist_id(name, image_url),external_url')
-      .in('id', eventIds)
-
-    if (evError) {
-      console.error('Error events:', evError)
-      setLoading(false)
-      return
-    }
-
-    setAgendaEvents(
-      events
-        .filter((e: any) => !!e.date)
-        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    )
-    setLoading(false)
-  }, [user])
-
   useEffect(() => {
-    const marks: Record<string, any> = {}
-    
-    // Explicitly add today to marks so it can have a custom style
-    const todayStr = new Date().toISOString().split('T')[0];
+    const marks: Record<string, unknown> = {}
+    const todayStr = new Date().toISOString().split('T')[0]
     marks[todayStr] = {
       customStyles: {
-        container: {
-          backgroundColor: 'rgba(255, 255, 255, 0.15)',
-          borderRadius: 8,
-        },
-        text: {
-          color: 'white',
-          fontWeight: 'bold',
-        }
+        container: { backgroundColor: 'rgba(255, 255, 255, 0.15)', borderRadius: 8 },
+        text: { color: 'white', fontWeight: 'bold' },
       }
-    };
+    }
 
-    agendaEvents.forEach((event: any) => {
+    agendaEvents.forEach((event) => {
       if (!event.date) return
-      
-      const eventDateObj = new Date(event.date);
-      const todayObj = new Date();
-      todayObj.setHours(0,0,0,0);
-      
-      const isPast = eventDateObj.getTime() < todayObj.getTime();
+      const eventDateObj = new Date(event.date)
+      const todayObj = new Date()
+      todayObj.setHours(0,0,0,0)
+      const isPast = eventDateObj.getTime() < todayObj.getTime()
       const date = eventDateObj.toISOString().split('T')[0]
-      
-      const isSelected = date === selectedDate;
+      const isSelected = date === selectedDate
 
       marks[date] = {
-        marked: !isPast, // Only show dot if it's NOT in the past
+        marked: !isPast,
         dotColor: isSelected ? 'white' : '#b10404',
         customStyles: {
           container: { 
@@ -227,15 +163,6 @@ export default function CalendarScreen() {
     setMarkedDates(marks)
   }, [agendaEvents, selectedDate])
 
-  useEffect(() => {
-    if (user) fetchUserEvents()
-  }, [user, fetchUserEvents])
-
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('refreshEvents', fetchUserEvents)
-    return () => sub.remove()
-  }, [fetchUserEvents])
-
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       <LinearGradient
@@ -249,10 +176,10 @@ export default function CalendarScreen() {
             
             <View style={styles.calendarContainer}>
                 <Calendar
-                key={selectedDate} // Force re-render on date change for current prop to reliably jump
+                key={selectedDate}
                 current={selectedDate}
                 markingType={'custom'}
-                markedDates={markedDates}
+                markedDates={markedDates as Record<string, { marked?: boolean; dotColor?: string; customStyles?: Record<string, unknown> }>}
                 firstDay={1}
                 theme={{
                     backgroundColor: 'transparent',
@@ -298,7 +225,7 @@ export default function CalendarScreen() {
                 style={styles.scrollView}
                 showsVerticalScrollIndicator={false}
             >
-            {agendaEvents.map((event: any) => (
+            {agendaEvents.map((event) => (
                 <EventCard 
                     key={event.id} 
                     event={event} 
@@ -316,127 +243,28 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: 'white',
-    paddingHorizontal: 20,
-    marginBottom: 15,
-  },
-  calendarContainer: {
-    marginHorizontal: 15,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  calendar: {
-    paddingBottom: 5,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginVertical: 15,
-    marginHorizontal: 20,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 100,
-    paddingHorizontal: 15,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 30,
-    opacity: 0.7,
-  },
-  noEvents: {
-    color: '#888',
-    fontSize: 18,
-    marginTop: 10,
-    fontWeight: '600',
-  },
-  subNoEvents: {
-    color: '#555',
-    marginTop: 5,
-  },
-  // Card
-  eventCardWrapper: {
-    marginBottom: 12, // Move margin here
-  },
-  swipeable: {
-    borderRadius: 12,
-    overflow: 'hidden', // Ensures actions clip to border radius
-  },
-  agendaItem: {
-    backgroundColor: 'rgba(30,30,30,0.6)',
-    // borderRadius: 12, // Let container handle radius
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  artistImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: '#333',
-  },
-  eventInfo: {
-    flex: 1,
-    marginLeft: 12,
-    justifyContent: 'center',
-  },
-  agendaDate: {
-    color: '#b10404',
-    fontWeight: '700',
-    fontSize: 12,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  agendaArtist: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  agendaVenue: {
-    color: '#999',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  exportButton: {
-    padding: 8,
-  },
-  cardActionsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  // Swipe
-  actionsContainer: {
-      flexDirection: 'row', 
-      width: 80, 
-      height: '100%',
-  },
-  actionButton: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    height: '100%',
-  },
-  deleteAction: {
-    backgroundColor: '#b10404',
-  },
-  deleteText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginTop: 5,
-  }
+  container: { flex: 1 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: 'white', paddingHorizontal: 20, marginBottom: 15 },
+  calendarContainer: { marginHorizontal: 15, borderRadius: 16, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  calendar: { paddingBottom: 5 },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 15, marginHorizontal: 20 },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: 100, paddingHorizontal: 15 },
+  emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 30, opacity: 0.7 },
+  noEvents: { color: '#888', fontSize: 18, marginTop: 10, fontWeight: '600' },
+  subNoEvents: { color: '#555', marginTop: 5 },
+  eventCardWrapper: { marginBottom: 12 },
+  swipeable: { borderRadius: 12, overflow: 'hidden' },
+  agendaItem: { backgroundColor: 'rgba(30,30,30,0.6)', flexDirection: 'row', alignItems: 'center', padding: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  artistImage: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#333' },
+  eventInfo: { flex: 1, marginLeft: 12, justifyContent: 'center' },
+  agendaDate: { color: '#b10404', fontWeight: '700', fontSize: 12, textTransform: 'uppercase', marginBottom: 2 },
+  agendaArtist: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+  agendaVenue: { color: '#999', fontSize: 13, marginTop: 2 },
+  exportButton: { padding: 8 },
+  cardActionsContainer: { flexDirection: 'row', alignItems: 'center' },
+  actionsContainer: { flexDirection: 'row', width: 80, height: '100%' },
+  actionButton: { justifyContent: 'center', alignItems: 'center', width: 80, height: '100%' },
+  deleteAction: { backgroundColor: '#b10404' },
+  deleteText: { color: 'white', fontSize: 10, fontWeight: 'bold', marginTop: 5 },
 })

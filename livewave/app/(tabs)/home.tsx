@@ -1,108 +1,34 @@
-import { StyleSheet, Text, View, ScrollView, Image, Dimensions, ActivityIndicator, DeviceEventEmitter, RefreshControl } from 'react-native'
+import { StyleSheet, Text, View, ScrollView, Image, Dimensions, DeviceEventEmitter, RefreshControl } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect } from 'react'
 import { useUser } from '@supabase/auth-helpers-react'
 import { supabase } from '../lib/supabase'
+import { useUserEvents } from '../../hooks'
 
 const screenWidth = Dimensions.get('window').width
 
 export default function LoggedHome() {
   const insets = useSafeAreaInsets()
   const user = useUser()
-  const [loading, setLoading] = useState(true)
-  const [username, setUsername] = useState<string | null>(null)
-  const [events, setEvents] = useState<any[]>([])
+  const { events, refreshing, refresh } = useUserEvents({ futureOnly: true })
 
-  // Obtener nombre de usuario y eventos
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    if (!user) {
-      setLoading(false)
-      return
-    }
-
-    // 1. Obtener el nombre de usuario desde profiles
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('name')
-      .eq('user_id', user.id)
-      .single()
-
-    let name = profile?.name || user.email || 'Usuario'
-    setUsername(name)
-
-    // 2. Obtener los event_id de user_events
-    const { data: userEvents } = await supabase
-      .from('user_events')
-      .select('event_id')
-      .eq('user_id', user.id)
-
-    const eventIds = userEvents?.map((ue: any) => ue.event_id) || []
-
-    if (eventIds.length === 0) {
-      setEvents([])
-      setLoading(false)
-      return
-    }
-
-    // 3. Obtener los eventos con esos IDs, ordenados por fecha
-    // Filtramos para traer solo eventos futuros o de hoy
-    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
-    
-    const { data: eventsData } = await supabase
-      .from('events')
-      .select('id,date,venue,city,country,artist_id,artist:artist_id(name,image_url)')
-      .in('id', eventIds)
-      .gte('date', today) // Filter: date >= today
-      .order('date', { ascending: true })
-
-    setEvents(eventsData || [])
-    setLoading(false)
-  }, [user])
-
+  // Registrar push notifications
   useEffect(() => {
-    fetchData()
-  }, [user, fetchData])
-
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('refreshEvents', fetchData)
-    return () => sub.remove()
-  }, [fetchData])
-
-  useEffect(() => {
-    registerForPushNotifications()
-  }, [user])
-
-  async function registerForPushNotifications() {
     if (!user) return
-    
-    try {
-      const { registerForPushNotificationsAsync } = await import('../lib/notifications')
-      const token = await registerForPushNotificationsAsync()
-      
-      if (token) {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ push_token: token })
-          .eq('id', user.id)
-        
-        if (error) {
-          console.error("Error saving push token:", error)
+    const register = async () => {
+      try {
+        const { registerForPushNotificationsAsync } = await import('../lib/notifications')
+        const token = await registerForPushNotificationsAsync()
+        if (token) {
+          await supabase.from('profiles').update({ push_token: token }).eq('id', user.id)
         }
+      } catch (error) {
+        console.error("Error registering for push notifications:", error)
       }
-    } catch (error) {
-      console.error("Error registering for push notifications:", error)
     }
-  } 
-
-  const [refreshing, setRefreshing] = useState(false);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchData();
-    setRefreshing(false);
-  }, [fetchData]);
+    register()
+  }, [user])
 
   const nextEvent = events[0]
   const upcomingEvents = events.slice(1, 6)
@@ -119,7 +45,7 @@ export default function LoggedHome() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#b10404" />
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#b10404" />
         }
       >
         <View style={[styles.greetingContainer, { marginTop: insets.top + 20 }]}>
@@ -161,7 +87,7 @@ export default function LoggedHome() {
           {upcomingEvents.length === 0 && (
             <Text style={styles.emptyUpcomingText}>No more shows saved</Text>
           )}
-          {upcomingEvents.map((event, i) => (
+          {upcomingEvents.map((event) => (
             <View key={event.id} style={styles.artistContainer}>
               <Image
                 source={{ uri: event.artist?.image_url || 'https://via.placeholder.com/200x200?text=Sin+imagen' }}
@@ -187,7 +113,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   scrollContent: {
-    paddingBottom: 120, // Space for tab bar
+    paddingBottom: 120,
   },
   greetingContainer: {
     paddingHorizontal: 20,
@@ -274,7 +200,7 @@ const styles = StyleSheet.create({
   },
   artistContainer: {
     marginRight: 16,
-    width: screenWidth * 0.35, // Slightly smaller for better fit
+    width: screenWidth * 0.35,
   },
   artistImage: {
     width: '100%',
