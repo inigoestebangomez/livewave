@@ -5,24 +5,46 @@ import { LinearGradient } from 'expo-linear-gradient'
 import React, { useEffect, useState, useCallback } from 'react'
 import { useUser } from '@supabase/auth-helpers-react'
 import { supabase } from '../lib/supabase'
-import { getEventsForArtist, getConcertRecommendations, Event } from '../lib/api'
+import { getEventsForArtist, getConcertRecommendations, getDiscoverArtists, Event, DiscoverArtist } from '../lib/api'
 import { Ionicons } from '@expo/vector-icons'
 
 const screenWidth = Dimensions.get('window').width
+
+// Derive a human-readable city label from GPS coordinates using known bounding boxes.
+// Falls back to "Near you" if the location is unknown.
+const getCityLabel = (lat: number, lng: number): string => {
+  // Spain
+  if (lat > 41.2 && lat < 41.6 && lng > 1.9 && lng < 2.4) return 'Barcelona';
+  if (lat > 40.2 && lat < 40.7 && lng > -3.9 && lng < -3.4) return 'Madrid';
+  if (lat > 37.3 && lat < 37.5 && lng > -6.1 && lng < -5.8) return 'Sevilla';
+  if (lat > 39.3 && lat < 39.6 && lng > -0.5 && lng < -0.2) return 'Valencia';
+  if (lat > 43.2 && lat < 43.4 && lng > -2.9 && lng < -2.7) return 'Bilbao';
+  if (lat > 36.6 && lat < 36.9 && lng > -4.6 && lng < -4.3) return 'Málaga';
+  if (lat > 41.6 && lat < 41.8 && lng > 2.7 && lng < 3.0) return 'Girona';
+  // Spain generic
+  if (lat > 36.0 && lat < 44.0 && lng > -9.5 && lng < 4.5) return 'España';
+  // Europe
+  if (lat > 48.7 && lat < 48.95 && lng > 2.2 && lng < 2.5) return 'Paris';
+  if (lat > 51.4 && lat < 51.6 && lng > -0.2 && lng < 0.1) return 'London';
+  if (lat > 52.4 && lat < 52.6 && lng > 13.2 && lng < 13.6) return 'Berlin';
+  return 'Near you';
+};
 
 export default function RecommendationsScreen() {
   const insets = useSafeAreaInsets()
   const user = useUser()
   
   useEffect(() => {
-      console.log('🚀 [Recommendations] Component Mounted (New Version)');
+      console.log('🚀 [Recommendations] Component Mounted (Festival Engine v2)');
   }, []);
 
   const [loading, setLoading] = useState(true)
   const [seedArtist, setSeedArtist] = useState<string | null>(null)
   const [recommendedEvents, setRecommendedEvents] = useState<Event[]>([])
   const [yourEvents, setYourEvents] = useState<Event[]>([])
+  const [trendingArtists, setTrendingArtists] = useState<DiscoverArtist[]>([])
   const [userCity, setUserCity] = useState<string | undefined>(undefined);
+  const [userGenreSlugs, setUserGenreSlugs] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -33,62 +55,64 @@ export default function RecommendationsScreen() {
     }
 
     try {
-        // A. GET FOLLOWED ARTISTS & EVENTS (Your Artists)
-        const { data: follows } = await supabase
-            .from('user_follows')
-            .select('artist:artists(name)')
+        // 0. GET USER GENRES (needed for festival engine)
+        const { data: userGenresData } = await supabase
+            .from('user_genres')
+            .select('genres(slug)')
             .eq('user_id', user.id)
-            .limit(50) // Fetch more to get variety
         
-        const allFollowedNames = follows?.map((f: any) => f.artist?.name).filter(Boolean) || []
-        
-        // Pick 5 random artists to check for events (to avoid spamming API)
-        const namesForEvents = allFollowedNames.sort(() => 0.5 - Math.random()).slice(0, 5)
-        
-        let allYourEvents: Event[] = []
+        const genreSlugs = userGenresData?.map((ug: any) => ug.genres?.slug).filter(Boolean) || [];
+        setUserGenreSlugs(genreSlugs);
+        console.log(`🎵 [Recommendations] User Genres: ${genreSlugs.join(', ')}`);
 
-        // Fetch events for each followed artist (parallel)
-        if (namesForEvents.length > 0) {
-            const promises = namesForEvents.map(name => getEventsForArtist(name))
-            const results = await Promise.all(promises)
-            const eventsFlat = results.flat().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            // Dedup events by ID
-            allYourEvents = Array.from(new Map(eventsFlat.map(item => [item.id, item])).values())
-        }
-        setYourEvents(allYourEvents)
-
-
-        // B. GET RECOMMENDATIONS (Discover)
-        // 1. Get User Location from Profile
         let locationCity: string | undefined = undefined;
         let userLatLong: string | undefined = undefined;
         let userRadius = 50; 
 
         const { data: profile, error: profileError } = await supabase
             .from('profiles')
-            .select('location, location_latitude, location_longitude, radius_km') // Correct column names
+            .select('location, location_latitude, location_longitude, radius_km')
             .eq('id', user.id)
             .single()
         
-        console.log(`👤 [Recommendations] User ID: ${user.id}`);
-        // console.log(`👤 Profile:`, profile); // Reduce noise
         if (profileError) console.error(`❌ [Recommendations] Profile Fetch Error:`, profileError);
         
         if (profile) {
-            if (profile.radius_km) {
-                userRadius = profile.radius_km;
-            }
-
-            // Priority 1: Lat/Long (Most accurate)
+            if (profile.radius_km) userRadius = profile.radius_km;
+            // profile.location is a PostGIS WKB binary blob — never use it for display or filtering.
+            // Use only the parsed lat/lng columns.
             if (profile.location_latitude && profile.location_longitude) {
                 userLatLong = `${profile.location_latitude},${profile.location_longitude}`;
-                setUserCity('My Location'); // Fallback name for UI
-                console.log(`📍 Using Coords: ${userLatLong} (Radius: ${userRadius}km)`);
+                // Derive a human-readable label from coordinates
+                // Barcelona area: lat ~41.4, lng ~2.18
+                const lat = parseFloat(profile.location_latitude);
+                const lng = parseFloat(profile.location_longitude);
+                const label = getCityLabel(lat, lng);
+                setUserCity(label);
             }
-            
-            // Priority 2: City String (if available in a text column, currently 'location' is hex so we likely skip this unless we add a specific city column)
-            // For now, reverse geocoding on every load is expensive. We rely on LatLong.
         }
+
+        // A. GET FOLLOWED ARTISTS & EVENTS (Your Artists)
+        const { data: follows } = await supabase
+            .from('user_follows')
+            .select('artist:artists(name)')
+            .eq('user_id', user.id)
+            .limit(50)
+        
+        const allFollowedNames = follows?.map((f: any) => f.artist?.name).filter(Boolean) || []
+        
+        // Pick 15 random artists to check for events to maximize the chances of finding nearby tours
+        const namesForEvents = allFollowedNames.sort(() => 0.5 - Math.random()).slice(0, 15)
+        
+        let allYourEvents: Event[] = []
+
+        if (namesForEvents.length > 0) {
+            const promises = namesForEvents.map(name => getEventsForArtist(name, userLatLong, 2000))
+            const results = await Promise.all(promises)
+            const eventsFlat = results.flat().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+            allYourEvents = Array.from(new Map(eventsFlat.map(item => [item.id, item])).values())
+        }
+        setYourEvents(allYourEvents)
 
         let seedName: string | null = null;
         
@@ -97,7 +121,7 @@ export default function RecommendationsScreen() {
             seedName = allFollowedNames[Math.floor(Math.random() * allFollowedNames.length)]
         } 
         
-        // 2. Fallback to user events if no follows
+        // 2. Fallback to user events
         if (!seedName) {
               const { data: userEvents } = await supabase
                 .from('user_events')
@@ -113,7 +137,6 @@ export default function RecommendationsScreen() {
                     .in('id', eventIds)
                     .limit(5)
                  
-                 // Pick random event artist
                  if (eventsData && eventsData.length > 0) {
                       const randomEvent = eventsData[Math.floor(Math.random() * eventsData.length)]
                       if (randomEvent.artist && !Array.isArray(randomEvent.artist)) {
@@ -125,47 +148,49 @@ export default function RecommendationsScreen() {
 
         // 3. Fallback to User Genres
         if (!seedName) {
-            const { data: userGenres } = await supabase
-                .from('user_genres')
-                .select('genre')
-                .eq('user_id', user.id)
-            
-            if (userGenres && userGenres.length > 0) {
-                const randomGenre = userGenres[Math.floor(Math.random() * userGenres.length)].genre
-                // Manual mapping for common genres to popular artists for seeding
-                if (randomGenre === 'rock') seedName = 'Muse'; // Changed to Muse as FF might be too generic
+            if (genreSlugs.length > 0) {
+                const randomGenre = genreSlugs[Math.floor(Math.random() * genreSlugs.length)]
+                if (randomGenre === 'rock') seedName = 'Muse';
                 else if (randomGenre === 'pop') seedName = 'Dua Lipa';
                 else if (randomGenre === 'hip-hop') seedName = 'Kendrick Lamar';
                 else if (randomGenre === 'electronic') seedName = 'Daft Punk';
                 else if (randomGenre === 'metal') seedName = 'Metallica';
+                else if (randomGenre === 'indie') seedName = 'Tame Impala';
+                else if (randomGenre === 'techno') seedName = 'Amelie Lens';
                 else seedName = 'Coldplay'; 
             } else {
-                 seedName = 'Coldplay'; // No data at all
+                 seedName = 'Coldplay';
             }
         }
 
+        // C. FETCH CONCERT RECOMMENDATIONS (merged: TM + Festival)
         if (seedName) {
              setSeedArtist(seedName);
-             console.log(`Getting Concert Recs for ${seedName} in ${locationCity || 'Anywhere'}`);
+             console.log(`🎯 Getting Concert Recs for ${seedName} with genres: ${genreSlugs.join(',')}`);
              
-             // call new API using local variables to avoid stale state
-             const response = await getConcertRecommendations(seedName, locationCity, userLatLong, userRadius);
+             const response = await getConcertRecommendations(seedName, locationCity, userLatLong, userRadius, genreSlugs);
              
-             if (response && response.events) {
-                 // Dedup: Create map by Event ID
+             if (response && response.events && response.events.length > 0) {
                  const uniqueEventsMap = new Map();
                  response.events.forEach((item: Event) => {
-                     // Check if an event with this ID exists
-                     if (!uniqueEventsMap.has(item.id)) {
-                         // Optional: Check if we already have an event for this artist on this date?
-                         // For now, ID dedup is enough to stop exact duplicates.
-                         uniqueEventsMap.set(item.id, item);
+                     if (!uniqueEventsMap.has(item.artistName)) {
+                         uniqueEventsMap.set(item.artistName, item);
                      }
                  });
                  setRecommendedEvents(Array.from(uniqueEventsMap.values()));
+                 if (response.sources) {
+                     console.log(`📊 Sources: TM=${response.sources.ticketmaster}, Festival=${response.sources.festival}`);
+                 }
              } else {
                  setRecommendedEvents([]);
              }
+        }
+
+        // D. FETCH TRENDING ARTISTS (festival-discovery engine)
+        if (genreSlugs.length > 0) {
+            const discovered = await getDiscoverArtists(genreSlugs, userLatLong, userRadius);
+            setTrendingArtists(discovered.slice(0, 15));
+            console.log(`🎪 [Recommendations] Trending Artists: ${discovered.length}`);
         }
 
     } catch (error) {
@@ -192,6 +217,23 @@ export default function RecommendationsScreen() {
     if (url) Linking.openURL(url);
   };
 
+  // Source badge color
+  const getSourceColor = (source?: string) => {
+    switch(source) {
+      case 'festival': return '#e67e22';
+      case 'spotify': return '#1DB954';
+      default: return '#2d8cf0';
+    }
+  };
+
+  const getSourceLabel = (source?: string) => {
+    switch(source) {
+      case 'festival': return 'Festival';
+      case 'spotify': return 'Spotify';
+      default: return 'Live';
+    }
+  };
+
   const renderEventCard = ({ item }: { item: Event }) => (
     <TouchableOpacity style={styles.eventCard} onPress={() => openLink(item.url)}>
         <Image 
@@ -199,12 +241,39 @@ export default function RecommendationsScreen() {
             style={styles.eventImage} 
         />
         <View style={styles.eventOverlay}>
+            {item.source && item.source !== 'ticketmaster' && (
+              <View style={[styles.sourceBadge, { backgroundColor: getSourceColor(item.source) }]}>
+                <Text style={styles.sourceBadgeText}>{getSourceLabel(item.source)}</Text>
+              </View>
+            )}
             <Text style={styles.eventArtist}>{item.artistName}</Text>
-            <Text style={styles.eventDate}>
-                {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-            </Text>
-            <Text style={styles.eventVenue} numberOfLines={1}>{item.venue}, {item.city}</Text>
+            {item.date && (
+              <Text style={styles.eventDate}>
+                  {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </Text>
+            )}
+            <Text style={styles.eventVenue} numberOfLines={1}>{item.venue}{item.city ? `, ${item.city}` : ''}</Text>
         </View>
+    </TouchableOpacity>
+  )
+
+  const renderTrendingCard = ({ item }: { item: DiscoverArtist }) => (
+    <TouchableOpacity style={styles.trendingCard} onPress={() => openLink(item.url)}>
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={styles.trendingImage} />
+        ) : (
+          <View style={[styles.trendingImage, styles.trendingPlaceholder]}>
+            <Ionicons name="musical-note" size={24} color="#b10404" />
+          </View>
+        )}
+        <Text style={styles.trendingName} numberOfLines={1}>{item.artistName || item.name}</Text>
+        <View style={styles.trendingMeta}>
+          <View style={[styles.sourceTag, { backgroundColor: getSourceColor(item.source) }]}>
+            <Text style={styles.sourceTagText}>{getSourceLabel(item.source)}</Text>
+          </View>
+          {item.genre && <Text style={styles.trendingGenre} numberOfLines={1}>{item.genre}</Text>}
+        </View>
+        {item.venue && <Text style={styles.trendingVenue} numberOfLines={1}>{item.venue}</Text>}
     </TouchableOpacity>
   )
 
@@ -244,21 +313,42 @@ export default function RecommendationsScreen() {
             </View>
         )}
 
-        {/* SECTION: DISCOVER */}
+        {/* SECTION: TRENDING IN YOUR GENRES (Festival + Spotify Discovery) */}
+        {trendingArtists.length > 0 && (
+            <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                    <Ionicons name="trending-up" size={18} color="#e67e22" />
+                    <View style={{flex: 1}}>
+                        <Text style={styles.sectionTitle}>Trending in Your Genres</Text>
+                        <Text style={{color:'#888', fontSize: 11, marginTop: 2}}>
+                            From {trendingArtists.filter(a => a.source === 'festival').length} festivals + Spotify
+                        </Text>
+                    </View>
+                </View>
+                <FlatList
+                    data={trendingArtists}
+                    horizontal
+                    renderItem={renderTrendingCard}
+                    keyExtractor={(item) => item.id}
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingHorizontal: 15 }}
+                />
+            </View>
+        )}
+
+        {/* SECTION: DISCOVER (Merged: TM + Festival) */}
         <View style={styles.section}>
             <View style={styles.sectionHeader}>
                 <Ionicons name="compass" size={18} color="#b10404" />
                 <View style={{flex: 1}}>
                     <Text style={styles.sectionTitle}>Discover</Text>
-                     {/* Debug / Info Location */}
                      {userCity && <Text style={{color:'#666', fontSize: 10}}>Near {userCity}</Text>}
                 </View>
                 <Text style={styles.sectionSubtitle}>
-                    {seedArtist ? `Because you like ${seedArtist}` : 'Similar to your taste'}
+                    {seedArtist ? `Inspired by ${seedArtist}` : 'Similar to your taste'}
                 </Text>
             </View>
             
-            {/* NEW: Vertical List for Better Visibility */}
             {recommendedEvents.length > 0 ? (
                 <View style={{ paddingHorizontal: 15 }}>
                   {recommendedEvents.map((item) => (
@@ -267,16 +357,33 @@ export default function RecommendationsScreen() {
                         style={styles.verticalCard} 
                         onPress={() => openLink(item.url)}
                     >
-                        <Image 
-                            source={{ uri: item.image || 'https://via.placeholder.com/150' }} 
-                            style={styles.verticalCardImage} 
-                        />
+                        {item.image ? (
+                          <Image 
+                              source={{ uri: item.image }} 
+                              style={styles.verticalCardImage} 
+                          />
+                        ) : (
+                          <View style={[styles.verticalCardImage, { backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' }]}>
+                            <Ionicons name="musical-note" size={20} color="#b10404" />
+                          </View>
+                        )}
                         <View style={styles.verticalCardContent}>
-                            <Text style={styles.eventArtist}>{item.artistName}</Text>
-                            <Text style={styles.eventDate}>
-                                {new Date(item.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={styles.eventArtist}>{item.artistName}</Text>
+                              {item.source && item.source !== 'ticketmaster' && (
+                                <View style={[styles.sourceTagSmall, { backgroundColor: getSourceColor(item.source) }]}>
+                                  <Text style={styles.sourceTagSmallText}>{getSourceLabel(item.source)}</Text>
+                                </View>
+                              )}
+                            </View>
+                            {item.date && (
+                              <Text style={styles.eventDate}>
+                                  {new Date(item.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                              </Text>
+                            )}
+                            <Text style={styles.eventVenue} numberOfLines={1}>
+                              {item.venue}{item.city ? `, ${item.city}` : ''}
                             </Text>
-                            <Text style={styles.eventVenue} numberOfLines={1}>{item.venue}, {item.city}</Text>
                         </View>
                         <Ionicons name="chevron-forward" size={20} color="#666" />
                     </TouchableOpacity>
@@ -329,6 +436,7 @@ const styles = StyleSheet.create({
     marginLeft: 'auto', 
     fontStyle: 'italic',
   },
+
   // Horizontal Event Card
   eventCard: {
     width: 200,
@@ -365,6 +473,87 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
+  // Source badge
+  sourceBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  sourceBadgeText: {
+    color: 'white',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  sourceTag: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  sourceTagText: {
+    color: 'white',
+    fontSize: 8,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  sourceTagSmall: {
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  sourceTagSmallText: {
+    color: 'white',
+    fontSize: 8,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+
+  // Trending Card (horizontal scroll)
+  trendingCard: {
+    width: 140,
+    marginRight: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  trendingImage: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#222',
+  },
+  trendingPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  trendingName: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  trendingMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  trendingGenre: {
+    color: '#888',
+    fontSize: 11,
+    flex: 1,
+  },
+  trendingVenue: {
+    color: '#666',
+    fontSize: 10,
+    marginTop: 3,
+    fontStyle: 'italic',
+  },
+
   // Vertical Card
   verticalCard: {
       flexDirection: 'row',
@@ -390,6 +579,3 @@ const styles = StyleSheet.create({
     marginTop: 50,
   }
 })
-
-
-

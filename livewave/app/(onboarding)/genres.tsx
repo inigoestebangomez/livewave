@@ -104,7 +104,8 @@ export default function GenreSelectionScreen() {
 
       if (insertError) throw insertError
 
-      router.push('/onboarding/artists')
+      // Save successful, proceed to artists
+      router.push('/(onboarding)/artists')
     } catch (error) {
       console.error('Error saving genres:', error)
       Alert.alert('Error', 'Failed to save preferences. Please try again.')

@@ -1,39 +1,45 @@
-// app/auth/forgot-password.tsx
 import React, { useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native'
+import { useRouter } from 'expo-router'
 import { supabase } from '../lib/supabase'
 
-export default function ForgotPasswordScreen() {
-  const [email, setEmail] = useState('')
+export default function ResetPasswordScreen() {
+  const router = useRouter()
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleReset = async () => {
+  const handleUpdatePassword = async () => {
+    if (!password) {
+      Alert.alert('Error', 'Please enter a valid password.')
+      return
+    }
+
     setLoading(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'livewave://reset-password',
+    const { error } = await supabase.auth.updateUser({
+      password: password
     })
 
     if (error) {
-      Alert.alert('Error', error.message)
+      Alert.alert('Error updating password', error.message)
     } else {
-      Alert.alert('Revisa tu correo', 'Te hemos enviado un enlace para restablecer tu contraseña.')
+      Alert.alert('Success', 'Password has been updated.')
+      router.replace('/(auth)/login')
     }
     setLoading(false)
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Forgot password?</Text>
+      <Text style={styles.title}>New Password</Text>
       <TextInput
         style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        onChangeText={setEmail}
-        value={email}
-        keyboardType="email-address"
+        placeholder="Enter new password"
+        secureTextEntry
+        onChangeText={setPassword}
+        value={password}
       />
-      <TouchableOpacity style={styles.button} onPress={handleReset} disabled={loading}>
-        <Text style={styles.buttonText}>{loading ? 'Sending...' : 'Send email'}</Text>
+      <TouchableOpacity style={styles.button} onPress={handleUpdatePassword} disabled={loading}>
+        <Text style={styles.buttonText}>{loading ? 'Saving...' : 'Update Password'}</Text>
       </TouchableOpacity>
     </View>
   )

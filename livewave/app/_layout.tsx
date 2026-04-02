@@ -96,11 +96,15 @@ const toastConfig = {
   )
 };
 
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 export default function RootLayout() {
   return (
-    <SessionContextProvider supabaseClient={supabase}>
-      <Slot />
-      <Toast config={toastConfig} topOffset={65} />
-    </SessionContextProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SessionContextProvider supabaseClient={supabase}>
+        <Slot />
+        <Toast config={toastConfig} topOffset={65} />
+      </SessionContextProvider>
+    </GestureHandlerRootView>
   )
 }

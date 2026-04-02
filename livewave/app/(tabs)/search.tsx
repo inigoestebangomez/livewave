@@ -10,19 +10,33 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
-  DeviceEventEmitter
+  DeviceEventEmitter,
+  Alert,
+  Animated
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../lib/supabase'
 import slugify from 'slugify'
+import { API_URL } from '../lib/api'
 
 // import { LinearGradient } from 'expo-linear-gradient'
 
 const screenWidth = Dimensions.get('window').width
+const screenHeight = Dimensions.get('window').height
+
+// Normalize country name variants so filter pills don't duplicate
+const normalizeCountry = (name: string): string => {
+  const n = name.trim();
+  if (['Spain', 'Espana', 'España'].includes(n)) return 'España';
+  if (['Germany', 'Deutschland', 'Alemania'].includes(n)) return 'Deutschland';
+  if (['France', 'Francia'].includes(n)) return 'France';
+  return n;
+};
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('')
+  const [isFocused, setIsFocused] = useState(false)
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [selectedArtist, setSelectedArtist] = useState<any | null>(null)
   const [events, setEvents] = useState<any[]>([])
@@ -36,7 +50,7 @@ export default function SearchScreen() {
   const filteredEvents = useMemo(() => {
     return events.filter(event => {
       const venue = event._embedded?.venues?.[0]
-      const country = venue?.country?.name || ''
+      const country = normalizeCountry(venue?.country?.name || '')
       const city = venue?.city?.name || ''
       const countryMatch = selectedCountry === 'all' || country === selectedCountry
       const cityMatch = selectedCity === 'all' || city === selectedCity
@@ -47,8 +61,8 @@ export default function SearchScreen() {
   const countries = useMemo(() => {
     const countrySet = new Set<string>()
     events.forEach(event => {
-      const country = event._embedded?.venues?.[0]?.country?.name
-      if (country) countrySet.add(country)
+      const raw = event._embedded?.venues?.[0]?.country?.name
+      if (raw) countrySet.add(normalizeCountry(raw))
     })
     return Array.from(countrySet).sort()
   }, [events])
@@ -57,7 +71,7 @@ export default function SearchScreen() {
     const citySet = new Set<string>()
     events.forEach(event => {
       const venue = event._embedded?.venues?.[0]
-      const country = venue?.country?.name || ''
+      const country = normalizeCountry(venue?.country?.name || '')
       const city = venue?.city?.name || ''
       if ((selectedCountry === 'all' || country === selectedCountry) && city) {
         citySet.add(city)
@@ -73,7 +87,7 @@ export default function SearchScreen() {
       return
     }
     try {
-      const response = await fetch(`http://192.168.1.135:8082/suggest?keyword=${encodeURIComponent(query)}`)
+      const response = await fetch(`${API_URL}/suggest?keyword=${encodeURIComponent(query)}`)
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
       const data = await response.json()
       setSuggestions(data?._embedded?.attractions || [])
@@ -96,11 +110,11 @@ export default function SearchScreen() {
     try {
       while (hasMorePages && page < maxPages) {
         if (page > 0) await sleep(delayBetweenRequests)
-        const response = await fetch(`http://192.168.1.135:8082/events?keyword=${encodeURIComponent(artistName)}&page=${page}&size=${pageSize}`)
+        const response = await fetch(`${API_URL}/events?keyword=${encodeURIComponent(artistName)}&page=${page}&size=${pageSize}`)
         if (!response.ok) {
           if (response.status === 429) {
             await sleep(2000)
-            const retryResponse = await fetch(`http://192.168.1.135:8082/events?keyword=${encodeURIComponent(artistName)}&page=${page}&size=${pageSize}`)
+            const retryResponse = await fetch(`${API_URL}/events?keyword=${encodeURIComponent(artistName)}&page=${page}&size=${pageSize}`)
             if (!retryResponse.ok) break
             const retryData = await retryResponse.json()
             allEvents.push(...(retryData?._embedded?.events || []))
@@ -175,12 +189,44 @@ const imageUrl = sortedImages[0]?.url || ''
     return
   }
 
-  // Crear o actualizar el evento
-  const externalUrl = event.url || ''
   const date = event.dates?.start?.dateTime || event.dates?.start?.localDate
   const venue = event._embedded?.venues?.[0]?.name || ''
   const city = event._embedded?.venues?.[0]?.city?.name || ''
   const country = event._embedded?.venues?.[0]?.country?.name || ''
+  const externalUrl = event.url || ''
+  
+  // Conflict Check
+  const eventDateStr = new Date(date).toISOString().split('T')[0];
+  const { data: existingEvents, error: conflictError } = await supabase
+    .from('user_events')
+    .select('event_id, events(date)')
+    .eq('user_id', user.id);
+
+  if (!conflictError && existingEvents) {
+     const hasConflict = existingEvents.some((e: any) => {
+         if (!e.events?.date) return false;
+         const d = new Date(e.events.date).toISOString().split('T')[0];
+         return d === eventDateStr;
+     });
+
+     if (hasConflict) {
+         Alert.alert(
+             "Conflict Detected",
+             "You already have a concert saved on this date. Do you want to add this one anyway?",
+             [
+                 { text: "Cancel", style: "cancel" },
+                 { text: "Add Anyway", onPress: () => proceedToAdd(artist, city, country, venue, date, externalUrl, user.id) }
+             ]
+         );
+         return;
+     }
+  }
+
+  await proceedToAdd(artist, city, country, venue, date, externalUrl, user.id);
+}
+
+const proceedToAdd = async (artist: any, city: string, country: string, venue: string, date: string, externalUrl: string, userId: string) => {
+
 
   const { data: newEvent, error: eventError } = await supabase
     .from('events')
@@ -209,7 +255,7 @@ const imageUrl = sortedImages[0]?.url || ''
   const { error: relError } = await supabase
     .from('user_events')
     .upsert(
-      { user_id: user.id, event_id: newEvent.id },
+      { user_id: userId, event_id: newEvent.id },
       { onConflict: 'user_id,event_id' }
     )
 
@@ -232,6 +278,129 @@ const imageUrl = sortedImages[0]?.url || ''
     setSelectedCity('all')
   }
 
+  // Parallax Logic
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  // Search Bar Animation
+  const searchAnim = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    Animated.spring(searchAnim, {
+      toValue: (isFocused || query.length > 0 || selectedArtist) ? 1 : 0,
+      useNativeDriver: true,
+      bounciness: 4,
+    }).start();
+  }, [isFocused, query, selectedArtist]);
+
+  const searchTranslateY = searchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [screenHeight * 0.3, 0]
+  });
+
+  // Header Animation
+  const headerHeight = 220;
+  const minHeaderHeight = 80; // Collapsed height (approx)
+  
+  const imageScale = scrollY.interpolate({
+      inputRange: [-headerHeight, 0, headerHeight],
+      outputRange: [1.5, 1, 0.3], // Scale down to 30%
+      extrapolate: 'clamp'
+  });
+
+  const imageTranslateY = scrollY.interpolate({
+      inputRange: [-headerHeight, 0, headerHeight],
+      outputRange: [0, 0, -headerHeight/2], // Move up slightly
+      extrapolate: 'clamp'
+  });
+
+  const headerOpacity = scrollY.interpolate({
+      inputRange: [0, headerHeight - minHeaderHeight],
+      outputRange: [1, 0],
+      extrapolate: 'clamp'
+  });
+
+  const renderHeader = () => (
+      <Animated.View style={[styles.artistHeader, { 
+          opacity: headerOpacity,
+          transform: [{ translateY: imageTranslateY }, { scale: imageScale }] 
+      }]}>
+          <Image
+            source={{ uri: selectedArtist?.images?.[0]?.url }}
+            style={styles.artistImage}
+            resizeMode="cover"
+          />
+          <Text style={styles.artistTitle}>{selectedArtist.name}</Text>
+          {loading && (
+            <Text style={styles.loadingText}>Loading events...</Text>
+          )}
+      </Animated.View>
+  );
+
+  const renderFilters = () => (
+      <View style={styles.filtersContainer}>
+        <View style={styles.filterHeader}>
+          <Text style={styles.filtersTitle}>Filters</Text>
+          <Text style={styles.eventCount}>
+            {filteredEvents.length} of {events.length} events
+          </Text>
+        </View>
+        
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
+          <TouchableOpacity 
+            style={[styles.filterButton, selectedCountry === 'all' && styles.filterButtonActive]}
+            onPress={() => {
+              setSelectedCountry('all')
+              setSelectedCity('all')
+            }}
+          >
+            <Text style={[styles.filterText, selectedCountry === 'all' && styles.filterTextActive]}>
+              All countries
+            </Text>
+          </TouchableOpacity>
+          
+          {countries.map(country => (
+            <TouchableOpacity 
+              key={country}
+              style={[styles.filterButton, selectedCountry === country && styles.filterButtonActive]}
+              onPress={() => {
+                setSelectedCountry(country)
+                setSelectedCity('all')
+              }}
+            >
+              <Text style={[styles.filterText, selectedCountry === country && styles.filterTextActive]}>
+                {country}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {cities.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
+            <TouchableOpacity 
+              style={[styles.filterButton, selectedCity === 'all' && styles.filterButtonActive]}
+              onPress={() => setSelectedCity('all')}
+            >
+              <Text style={[styles.filterText, selectedCity === 'all' && styles.filterTextActive]}>
+                All cities
+              </Text>
+            </TouchableOpacity>
+            
+            {cities.map(city => (
+              <TouchableOpacity 
+                key={city}
+                style={[styles.filterButton, selectedCity === city && styles.filterButtonActive]}
+                onPress={() => setSelectedCity(city)}
+              >
+                <Text style={[styles.filterText, selectedCity === city && styles.filterTextActive]}>
+                  {city}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+  );
+
   return (
     <ImageBackground
       source={require('../../assets/images/Gemini_Generated_Image_d0p2vyd0p2vyd0p2.jpeg')}
@@ -239,20 +408,22 @@ const imageUrl = sortedImages[0]?.url || ''
       resizeMode="cover"
     >
       <View style={[styles.overlay, { paddingTop: insets.top + 20 }]}>
-        <View style={styles.searchContainer}>
+        <Animated.View style={[styles.searchContainer, { transform: [{ translateY: searchTranslateY }] }]}>
           <TextInput
             placeholder="Search..."
             placeholderTextColor="#ccc"
             style={styles.input}
             value={query}
             onChangeText={handleSearchChange}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
           />
           {(selectedArtist || query.length > 0) && (
             <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
               <Ionicons name="close-circle" size={30} color="#ccc" />
             </TouchableOpacity>
           )}
-        </View>
+        </Animated.View>
 
         {!selectedArtist && suggestions.length > 0 && (
           <FlatList
@@ -282,89 +453,29 @@ const imageUrl = sortedImages[0]?.url || ''
         )}
 
         {selectedArtist && (
-          <View style={styles.eventsContainer}>
-            <View style={styles.artistHeader}>
-              <Image
-                source={{ uri: selectedArtist?.images?.[0]?.url }}
-                style={styles.artistImage}
-                resizeMode="cover"
-              />
-              <Text style={styles.artistTitle}>{selectedArtist.name}</Text>
-              {loading && (
-                <Text style={styles.loadingText}>Loading events...</Text>
-              )}
-            </View>
-
-            {events.length > 0 && (
-              <View style={styles.filtersContainer}>
-                <View style={styles.filterHeader}>
-                  <Text style={styles.filtersTitle}>Filters</Text>
-                  <Text style={styles.eventCount}>
-                    {filteredEvents.length} of {events.length} events
-                  </Text>
-                </View>
-                
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-                  <TouchableOpacity 
-                    style={[styles.filterButton, selectedCountry === 'all' && styles.filterButtonActive]}
-                    onPress={() => {
-                      setSelectedCountry('all')
-                      setSelectedCity('all')
-                    }}
-                  >
-                    <Text style={[styles.filterText, selectedCountry === 'all' && styles.filterTextActive]}>
-                      All countries
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  {countries.map(country => (
-                    <TouchableOpacity 
-                      key={country}
-                      style={[styles.filterButton, selectedCountry === country && styles.filterButtonActive]}
-                      onPress={() => {
-                        setSelectedCountry(country)
-                        setSelectedCity('all')
-                      }}
-                    >
-                      <Text style={[styles.filterText, selectedCountry === country && styles.filterTextActive]}>
-                        {country}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-
-                {cities.length > 0 && (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-                    <TouchableOpacity 
-                      style={[styles.filterButton, selectedCity === 'all' && styles.filterButtonActive]}
-                      onPress={() => setSelectedCity('all')}
-                    >
-                      <Text style={[styles.filterText, selectedCity === 'all' && styles.filterTextActive]}>
-                        All cities
-                      </Text>
-                    </TouchableOpacity>
-                    
-                    {cities.map(city => (
-                      <TouchableOpacity 
-                        key={city}
-                        style={[styles.filterButton, selectedCity === city && styles.filterButtonActive]}
-                        onPress={() => setSelectedCity(city)}
-                      >
-                        <Text style={[styles.filterText, selectedCity === city && styles.filterTextActive]}>
-                          {city}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+             <Animated.FlatList
+                data={filteredEvents.length > 0 ? filteredEvents : []}
+                keyExtractor={(item: any, index: number) => `${item.id}-${item.dates?.start?.localDate || index}`}
+                ListHeaderComponent={() => (
+                    <View>
+                        {renderHeader()}
+                        {events.length > 0 && renderFilters()}
+                        {!loading && filteredEvents.length === 0 && (
+                             <View style={styles.noEventsContainer}>
+                                <Text style={styles.noEventsText}>
+                                  {events.length > 0 ? "No events at this location" : `Ooops! ${selectedArtist.name} has no upcoming shows...`}
+                                </Text>
+                              </View>
+                        )}
+                    </View>
                 )}
-              </View>
-            )}
-
-            {filteredEvents.length > 0 ? (
-              <FlatList
-                data={filteredEvents}
-                keyExtractor={(item, index) => `${item.id}-${item.dates?.start?.localDate || index}`}
-                renderItem={({ item }) => (
+                contentContainerStyle={{ paddingBottom: 120, paddingTop: 0 }}
+                scrollEventThrottle={16}
+                onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                    { useNativeDriver: false }
+                )}
+                renderItem={({ item }: { item: any }) => (
                   <View style={styles.card}>
                     <View style={styles.cardContent}>
                       <Text style={styles.cardTitle}>{item.name}</Text>
@@ -382,25 +493,7 @@ const imageUrl = sortedImages[0]?.url || ''
                     </TouchableOpacity>
                   </View>
                 )}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 120 }}
-                style={styles.eventsList}
-              />
-              
-            ) : !loading && selectedArtist && events.length > 0 ? (
-              <View style={styles.noEventsContainer}>
-                <Text style={styles.noEventsText}>
-                  No events at this location
-                </Text>
-              </View>
-            ) : !loading && selectedArtist ? (
-              <View style={styles.noEventsContainer}>
-                <Text style={styles.noEventsText}>
-                  Ooops! {selectedArtist.name} has no upcoming shows...
-                </Text>
-              </View>
-            ) : null}
-          </View>
+             />
         )}
       </View>
 
@@ -599,7 +692,7 @@ const styles = StyleSheet.create({
   },
   addedShowContainer: {
     position: 'absolute', 
-    bottom: 80, 
+    bottom: 140, 
     left: 0, 
     right: 0, 
     zIndex: 100,

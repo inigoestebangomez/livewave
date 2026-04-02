@@ -235,7 +235,8 @@ export default function ArtistSelectionScreen() {
   }
 
   const handleFinish = () => {
-    router.replace('/(tabs)/home')
+    // Save successful, proceed to tutorial
+    router.push('/(onboarding)/tutorial')
   }
 
   return (

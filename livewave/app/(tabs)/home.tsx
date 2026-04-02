@@ -108,7 +108,7 @@ export default function LoggedHome() {
   const upcomingEvents = events.slice(1, 6)
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.container}>
       <LinearGradient
         colors={['#000000', '#b10404']}
         locations={[0.6, 1]}
@@ -117,6 +117,7 @@ export default function LoggedHome() {
 
       <ScrollView 
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#b10404" />
         }
@@ -126,30 +127,39 @@ export default function LoggedHome() {
         </View>
 
         {nextEvent ? (
-          <View style={styles.eventCard}>
-            <Image
-              source={{
-                uri: nextEvent.artist?.image_url || 'https://via.placeholder.com/600x400?text=Sin+imagen',
-              }}
-              style={styles.eventImage}
-            />
-            <Text style={styles.eventTitle}>{nextEvent.artist?.name || 'Artista desconocido'}</Text>
-            <Text style={styles.eventDate}>
-              {new Date(nextEvent.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })} - {nextEvent.city}
-            </Text>
+          <View style={styles.mainCardWrapper}>
+              <View style={styles.eventCard}>
+                <Image
+                  source={{
+                    uri: nextEvent.artist?.image_url || 'https://via.placeholder.com/600x400?text=Sin+imagen',
+                  }}
+                  style={styles.eventImage}
+                />
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.8)', '#000']}
+                  style={styles.imageOverlay}
+                />
+                <View style={styles.mainEventInfo}>
+                    <Text style={styles.eventTitle} numberOfLines={1}>{nextEvent.artist?.name || 'Artista desconocido'}</Text>
+                    <Text style={styles.eventDate}>
+                      {new Date(nextEvent.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })} • {nextEvent.city}
+                    </Text>
+                </View>
+              </View>
           </View>
         ) : (
-          <View style={styles.eventCard}>
-            <Text style={{ color: '#fff', fontSize: 18, textAlign: 'center' }}>No upcoming shows</Text>
+          <View style={[styles.eventCard, styles.emptyCard]}>
+            <Text style={styles.emptyText}>No upcoming shows</Text>
           </View>
         )}
 
         <View style={styles.upcomingContainer}>
           <Text style={styles.upcomingTitle}>Upcoming</Text>
         </View>
+        
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.upcomingScroll}>
           {upcomingEvents.length === 0 && (
-            <Text style={{ color: '#aaa', marginLeft: 20 }}>No more shows</Text>
+            <Text style={styles.emptyUpcomingText}>No more shows saved</Text>
           )}
           {upcomingEvents.map((event, i) => (
             <View key={event.id} style={styles.artistContainer}>
@@ -157,11 +167,11 @@ export default function LoggedHome() {
                 source={{ uri: event.artist?.image_url || 'https://via.placeholder.com/200x200?text=Sin+imagen' }}
                 style={styles.artistImage}
               />
-              <Text style={[styles.eventDate, styles.artistTitle]}>
-                {event.artist?.name || 'Artista'}{'\n'}
-                <Text style={{ color: '#b10404' }}>
-                  {new Date(event.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
-                </Text>
+              <Text style={styles.artistTitle} numberOfLines={1}>
+                {event.artist?.name || 'Artista'}
+              </Text>
+              <Text style={styles.upcomingDateText}>
+                  {new Date(event.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }).toUpperCase()}
               </Text>
             </View>
           ))}
@@ -173,73 +183,115 @@ export default function LoggedHome() {
 
 const styles = StyleSheet.create({
   container: {
-    width: '100%',
-    height: '100%',
-    position: 'relative',
+    flex: 1,
+    backgroundColor: '#000',
   },
   scrollContent: {
-    paddingBottom: 100, // Space for tab bar
+    paddingBottom: 120, // Space for tab bar
   },
   greetingContainer: {
-    marginLeft: 20,
-    marginBottom: 10,
+    paddingHorizontal: 20,
+    marginBottom: 15,
   },
   greetingText: {
     color: 'white',
-    fontSize: 40,
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  mainCardWrapper: {
+      paddingHorizontal: 20,
   },
   eventCard: {
-    marginTop: 10,
-    padding: 16,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(30,30,30,0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  emptyCard: {
+      padding: 40,
+      marginHorizontal: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderStyle: 'dashed',
+      borderColor: 'rgba(255,255,255,0.2)'
+  },
+  emptyText: {
+      color: '#888',
+      fontSize: 16,
+      fontWeight: '500'
   },
   eventImage: {
-    width: screenWidth * 0.9,
-    height: screenWidth*0.7,
+    width: '100%',
+    aspectRatio: 1, 
     resizeMode: 'cover',
-    borderRadius: 20,
-    marginBottom: 10,
+  },
+  imageOverlay: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: '50%',
+  },
+  mainEventInfo: {
+      position: 'absolute',
+      bottom: 20,
+      left: 20,
+      right: 20,
   },
   eventTitle: {
     color: 'white',
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 5,
-    marginLeft: 5,
+    marginBottom: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: {width: 0, height: 1},
+    textShadowRadius: 10
   },
   eventDate: {
-    color: '#aaa',
+    color: '#ccc',
     fontSize: 14,
-    marginLeft: 5,
+    fontWeight: '500',
+    textTransform: 'uppercase',
   },
   upcomingContainer: {
-    marginTop: 10,
-    marginLeft: 20,
+    marginTop: 30,
+    paddingHorizontal: 20,
+    marginBottom: 15,
   },
   upcomingTitle: {
     color: 'white',
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '700',
   },
   upcomingScroll: {
-    marginLeft: 20,
-    marginTop: 30,
-    alignItems: 'center',
-    height: screenWidth * 0.5,
+    paddingHorizontal: 20,
+  },
+  emptyUpcomingText: {
+      color: '#666',
+      fontSize: 14,
   },
   artistContainer: {
     marginRight: 16,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    width: screenWidth * 0.42,
+    width: screenWidth * 0.35, // Slightly smaller for better fit
   },
   artistImage: {
-    width: screenWidth * 0.42,
-    height: screenWidth * 0.42,
-    borderRadius: 12,
-    marginBottom: 8,
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 16,
+    marginBottom: 10,
+    backgroundColor: '#333'
   },
   artistTitle: {
-    textAlign: 'center'
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2
   },
+  upcomingDateText: {
+      color: '#ccc',
+      fontSize: 12,
+      fontWeight: 'bold'
+  }
 })

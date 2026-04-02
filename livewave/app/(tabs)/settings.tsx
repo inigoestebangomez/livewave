@@ -255,7 +255,7 @@ export default function Settings() {
                  <Ionicons name="musical-notes" size={20} color="#b10404" />
                  <Text style={styles.settingLabel}>Music Preferences</Text>
                </View>
-               <TouchableOpacity onPress={() => router.push('/onboarding/genres')}>
+               <TouchableOpacity onPress={() => router.push('/(onboarding)/genres')}>
                  <Text style={styles.actionLink}>Edit</Text>
                </TouchableOpacity>
             </View>

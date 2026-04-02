@@ -5,6 +5,13 @@ import fetch from 'node-fetch';
 const TM_API_KEY = process.env.TM_API_KEY;
 const BASE_URL = 'https://app.ticketmaster.com/discovery/v2';
 
+// Words that indicate a TM result is a ticket/pass, not a real concert
+const TM_NOISE_WORDS = ['abono', 'abonos', 'entrada', 'entradas', 'camping', 'vip pass', 'parking'];
+const isTmNoise = (name = '') => {
+    const lower = name.toLowerCase();
+    return TM_NOISE_WORDS.some(w => lower.includes(w));
+};
+
 export const TicketmasterService = {
   
   // Search for events with filters
@@ -43,7 +50,9 @@ export const TicketmasterService = {
     }
     
     const data = await response.json();
-    return data._embedded?.events || [];
+    const events = data._embedded?.events || [];
+    // Strip ticket passes / abonos — they are not real concerts
+    return events.filter(e => !isTmNoise(e.name) && !isTmNoise(e._embedded?.attractions?.[0]?.name));
   },
 
   // ... searchAttractions ...
@@ -52,7 +61,8 @@ export const TicketmasterService = {
       const url = `${BASE_URL}/attractions.json?apikey=${TM_API_KEY}&keyword=${encodeURIComponent(keyword)}`;
       const response = await fetch(url);
       const data = await response.json();
-      return data._embedded?.attractions || [];
+      const attractions = data._embedded?.attractions || [];
+      return attractions.filter(a => !isTmNoise(a.name));
   },
 
   // Get recommendations based on seed artist name + location

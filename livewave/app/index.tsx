@@ -1,27 +1,127 @@
-import { ImageBackground, StyleSheet,Text, TouchableOpacity, View } from "react-native";
+import { ImageBackground, StyleSheet,Text, TouchableOpacity, View, Alert, Platform } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
+import * as AppleAuthentication from 'expo-apple-authentication'
+import * as WebBrowser from 'expo-web-browser'
+
+WebBrowser.maybeCompleteAuthSession()
 
 export default function Home() {
 
 const router = useRouter();
 const [checkingSession, setCheckingSession] = useState(true)
+const [loading, setLoading] = useState(false)
 
 useEffect(() => {
   const checkSession = async () => {
     const { data } = await supabase.auth.getSession()
     if (data?.session) {
-      router.replace('/(tabs)/home')
+      // Check if user has onboarded
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('has_onboarded')
+        .eq('id', data.session.user.id)
+        .single()
+        
+      if (profile && profile.has_onboarded) {
+         router.replace('/(tabs)/home')
+      } else {
+         router.replace('/(onboarding)/location')
+      }
     } else {
       setCheckingSession(false) 
     }
   }
   checkSession()
 }, [router])
+
+const handleGoogleLogin = async () => {
+  try {
+    setLoading(true)
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: 'livewave://google-auth',
+        skipBrowserRedirect: true,
+      },
+    })
+    if (error) throw error
+    
+    const res = await WebBrowser.openAuthSessionAsync(data.url, 'livewave://google-auth')
+    if (res.type === 'success') {
+      const urlStr = res.url.replace('#', '?');
+      const queryString = urlStr.split('?')[1] || '';
+      const params = Object.fromEntries(queryString.split('&').map(p => p.split('=')));
+      const access_token = params.access_token;
+      const refresh_token = params.refresh_token;
+        if (access_token && refresh_token) {
+          const { data: sessionData, error: sessionError } = await supabase.auth.setSession({ access_token, refresh_token })
+          if (sessionError) throw sessionError
+          
+          if (sessionData.user) {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('has_onboarded')
+                .eq('id', sessionData.user.id)
+                .single()
+              
+              if (profile && profile.has_onboarded) {
+                 router.replace('/(tabs)/home')
+              } else {
+                 router.replace('/(onboarding)/location')
+              }
+          }
+        }
+    }
+  } catch (error: any) {
+    Alert.alert('Google Auth Error', error.message)
+  } finally {
+    setLoading(false)
+  }
+}
+
+const handleAppleLogin = async () => {
+  try {
+    setLoading(true)
+    const credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+    })
+    if (credential.identityToken) {
+      const { error, data } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      })
+      if (data.user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('has_onboarded')
+            .eq('id', data.user.id)
+            .single()
+          
+          if (profile && profile.has_onboarded) {
+             router.replace('/(tabs)/home')
+          } else {
+             router.replace('/(onboarding)/location')
+          }
+      }
+      throw new Error('No identity token provided by Apple.')
+    }
+  } catch (e: any) {
+    if (e.code !== 'ERR_REQUEST_CANCELED') {
+       Alert.alert('Apple Auth Error', e.message)
+    }
+  } finally {
+    setLoading(false)
+  }
+}
+
 if (checkingSession) return null
 
   return (
@@ -43,17 +143,15 @@ if (checkingSession) return null
       </View>
 
       <View style={styles.signUpContainer}>
-      <View style={styles.iconWrapper}>
-        <Link href={"https://www.apple.com/ios/app-store/"}>
+      {Platform.OS === 'ios' && (
+        <TouchableOpacity style={styles.iconWrapper} onPress={handleAppleLogin} disabled={loading}>
           <Ionicons name="logo-apple" size={20} color="white" />
-        </Link>
-      </View>
+        </TouchableOpacity>
+      )}
 
-      <View style={styles.iconWrapper}>
-        <Link href={"https://play.google.com/store"}>
-          <Ionicons name="logo-google" size={20} color="white" />
-        </Link>
-      </View>
+      <TouchableOpacity style={styles.iconWrapper} onPress={handleGoogleLogin} disabled={loading}>
+        <Ionicons name="logo-google" size={20} color="white" />
+      </TouchableOpacity>
       <TouchableOpacity
         style={styles.signUpButton}
         >

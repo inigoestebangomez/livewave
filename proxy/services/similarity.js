@@ -35,18 +35,63 @@ export const SIMILARITY_MAP = {
     'calvin harris': ['David Guetta', 'Avicii', 'Tiësto', 'Zedd', 'Martin Garrix']
 };
 
+// Dynamic co-occurrence map from festival data
+let festivalCoMap = null;
+let lastCoMapUpdate = 0;
+const CO_MAP_TTL = 60 * 60 * 1000; // Refresh every hour
+
+async function getFestivalCoMap() {
+    if (festivalCoMap && Date.now() - lastCoMapUpdate < CO_MAP_TTL) {
+        return festivalCoMap;
+    }
+    try {
+        // Dynamic import to avoid circular dependency
+        const { FestivalService } = await import('./festivals.js');
+        festivalCoMap = FestivalService.getCoOccurrenceMap();
+        lastCoMapUpdate = Date.now();
+        console.log(`🔗 [Similarity] Updated festival co-occurrence map: ${Object.keys(festivalCoMap).length} artists`);
+        return festivalCoMap;
+    } catch (e) {
+        console.warn('⚠️ [Similarity] Could not load festival co-map:', e.message);
+        return {};
+    }
+}
+
 export function getSimilarArtists(seedName) {
     if (!seedName) return [];
     
     // Normalize seed 
     const lowerSeed = seedName.toLowerCase().trim();
     
-    // Direct match
+    // Priority 1: Hardcoded map (curated, reliable)
     if (SIMILARITY_MAP[lowerSeed]) {
         return SIMILARITY_MAP[lowerSeed];
     }
     
-    // Check if seed is contained (e.g. "Muse UK" -> "Muse")? No, risky.
+    // Priority 2: Festival co-occurrence map (dynamic, broader)
+    if (festivalCoMap && festivalCoMap[lowerSeed]) {
+        return festivalCoMap[lowerSeed];
+    }
+    
+    return [];
+}
+
+// Async version that refreshes co-map if needed
+export async function getSimilarArtistsAsync(seedName) {
+    if (!seedName) return [];
+    
+    const lowerSeed = seedName.toLowerCase().trim();
+    
+    // Priority 1: Hardcoded map
+    if (SIMILARITY_MAP[lowerSeed]) {
+        return SIMILARITY_MAP[lowerSeed];
+    }
+    
+    // Priority 2: Festival co-occurrence (refresh if stale)
+    const coMap = await getFestivalCoMap();
+    if (coMap[lowerSeed]) {
+        return coMap[lowerSeed];
+    }
     
     return [];
 }

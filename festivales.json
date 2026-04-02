@@ -1,0 +1,110 @@
+{
+  "festivales": {
+    "Espana": [
+      { "nombre": "Primavera Sound", "ubicacion": "Barcelona", "generos": ["Indie", "Pop", "Electrónica"], "promotor": "Primavera Sound S.L.", "entradas": "https://www.primaverasound.com",
+        "artistas": ["Chappell Roan", "Charli XCX", "Clairo", "FKA twigs", "Justice", "LCD Soundsystem", "Mitski", "Magdalena Bay", "Mk.gee", "Perfume Genius", "Phoebe Bridgers", "Vampire Weekend"]
+      },
+      { "nombre": "Mad Cool Festival", "ubicacion": "Madrid", "generos": ["Rock", "Pop", "Indie"], "promotor": "Mad Cool S.L. / Live Nation", "entradas": "https://madcoolfestival.es",
+        "artistas": ["Muse", "Olivia Rodrigo", "Sabrina Carpenter", "Benson Boone", "Nothing But Thieves", "Aurora", "Jamie xx", "The Last Dinner Party", "Blossoms"]
+      },
+      { "nombre": "Sónar Festival", "ubicacion": "Barcelona", "generos": ["Electrónica", "Arte Digital"], "promotor": "Advanced Music S.L.", "entradas": "https://sonar.es",
+        "artistas": ["Aphex Twin", "Arca", "Four Tet", "Floating Points", "Jon Hopkins", "Objekt", "Skrillex"]
+      },
+      { "nombre": "Bilbao BBK Live", "ubicacion": "Bilbao", "generos": ["Indie", "Rock", "Alternativo"], "promotor": "Last Tour", "entradas": "https://bilbaobbklive.com",
+        "artistas": ["Massive Attack", "Fontaines D.C.", "Jungle", "Peggy Gou", "Two Door Cinema Club", "Confidence Man", "Everything Everything"]
+      },
+      { "nombre": "Resurrection Fest", "ubicacion": "Viveiro", "generos": ["Metal", "Hardcore", "Punk"], "promotor": "Bring The Noise", "entradas": "https://www.resurrectionfest.es",
+        "artistas": ["Slipknot", "Rammstein", "Bring Me The Horizon", "Sabaton", "Powerwolf", "Architects", "Knocked Loose", "Bad Omens", "Spiritbox"]
+      },
+      { "nombre": "FIB Benicàssim", "ubicacion": "Castellón", "generos": ["Indie", "Pop", "Rock"], "promotor": "The Music Republic", "entradas": "https://fiberfib.com",
+        "artistas": ["The Killers", "Pulp", "Kasabian", "Placebo", "Supergrass", "The Hives", "The Subways"]
+      },
+      { "nombre": "Arenal Sound", "ubicacion": "Burriana", "generos": ["Urbana", "Pop", "Electrónica"], "promotor": "The Music Republic", "entradas": "https://www.arenalsound.com" },
+      { "nombre": "Viña Rock", "ubicacion": "Villarrobledo", "generos": ["Rock urbano", "Rap", "Reggae"], "promotor": "The Music Republic", "entradas": "https://www.vina-rock.com" },
+      { "nombre": "O Son do Camiño", "ubicacion": "Santiago", "generos": ["Pop", "Rock", "Urbana"], "promotor": "Esmerarte / Bring The Noise", "entradas": "https://www.osondocamino.es",
+        "artistas": ["Linkin Park", "Imagine Dragons", "Peso Pluma", "Karol G", "David Guetta", "Calvin Harris", "The Blaze", "Vetusta Morla", "Quevedo"]
+      },
+      { "nombre": "Sonorama Ribera", "ubicacion": "Aranda de Duero", "generos": ["Indie español", "Pop"], "promotor": "Art de Troya", "entradas": "https://sonoramaribera.com",
+        "artistas": ["Vetusta Morla", "El Último de la Fila", "La Paloma", "Rufus T Firefly", "Zahara", "Veintiuno", "Sen Senra", "Dorian"]
+      },
+      { "nombre": "Cruïlla", "ubicacion": "Barcelona", "generos": ["Eclectic", "Pop", "Rock", "Latina"], "promotor": "Barcelona Events & Markets", "entradas": "https://www.cruillabarcelona.com" },
+      { "nombre": "Azkena Rock Festival", "ubicacion": "Vitoria", "generos": ["Rock clásico", "Hard Rock"], "promotor": "Last Tour", "entradas": "https://www.azkenarockfestival.com" },
+      { "nombre": "Dreambeach", "ubicacion": "Almería", "generos": ["EDM", "Techno", "Hardstyle"], "promotor": "Grupo Hermanos Toro", "entradas": "https://www.dreambeach.es" },
+      { "nombre": "Monegros Desert Festival", "ubicacion": "Huesca", "generos": ["Techno", "Hip-Hop"], "promotor": "Familia Arnau (Elrow)", "entradas": "https://www.monegrosfestival.com" },
+      { "nombre": "Aquasella", "ubicacion": "Asturias", "generos": ["Techno", "Underground"], "promotor": "La Real Producciones", "entradas": "https://aquasella.com" },
+      { "nombre": "Boombastic", "ubicacion": "Asturias/Madrid", "generos": ["Urbana", "Reggaeton", "Pop"], "promotor": "Marino Medina", "entradas": "https://boombasticfestival.com" },
+      { "nombre": "Low Festival", "ubicacion": "Benidorm", "generos": ["Indie", "Pop", "Electrónica"], "promotor": "Producciones Baltimore", "entradas": "https://lowfestival.es",
+        "artistas": ["Jungle", "Metronomy", "Two Door Cinema Club", "The Blaze", "Kae Tempest", "Hinds", "Carly Rae Jepsen", "Yung Lean"]
+      },
+      { "nombre": "Leyendas del Rock", "ubicacion": "Villena", "generos": ["Heavy Metal", "Hard Rock"], "promotor": "Sufriendo & Gozando", "entradas": "https://www.leyendasdelrockfestival.com" },
+      { "nombre": "Tomavistas", "ubicacion": "Madrid", "generos": ["Indie", "Alternativo"], "promotor": "Tomavistas", "entradas": "https://www.tomavistasfestival.com" },
+      { "nombre": "Río Babel", "ubicacion": "Madrid", "generos": ["Iberoamericana", "Pop", "Urbana"], "promotor": "Sonde3 Producciones", "entradas": "https://festivalriobabel.com" }
+    ],
+    "UK": [
+      { "nombre": "Glastonbury Festival", "ubicacion": "Pilton", "generos": ["Multigénero"], "promotor": "Glastonbury Festivals", "entradas": "https://glastonbury.seetickets.com" },
+      { "nombre": "Reading Festival", "ubicacion": "Reading", "generos": ["Rock", "Hip-Hop", "Alternativo"], "promotor": "Festival Republic", "entradas": "https://www.readingfestival.com" },
+      { "nombre": "Leeds Festival", "ubicacion": "Leeds", "generos": ["Rock", "Hip-Hop", "Alternativo"], "promotor": "Festival Republic", "entradas": "https://www.leedsfestival.com" },
+      { "nombre": "Creamfields", "ubicacion": "Daresbury", "generos": ["EDM", "Techno", "House"], "promotor": "Cream", "entradas": "https://creamfields.com" },
+      { "nombre": "Download Festival", "ubicacion": "Donington", "generos": ["Metal", "Hard Rock"], "promotor": "Live Nation", "entradas": "https://downloadfestival.co.uk" },
+      { "nombre": "Isle of Wight Festival", "ubicacion": "Isla de Wight", "generos": ["Pop", "Rock clásico"], "promotor": "Solo Agency", "entradas": "https://isleofwightfestival.com" },
+      { "nombre": "Boomtown Fair", "ubicacion": "Winchester", "generos": ["Reggae", "Drum&Bass", "Ska"], "promotor": "Boomtown Festival UK", "entradas": "https://www.boomtownfair.co.uk" },
+      { "nombre": "Parklife", "ubicacion": "Mánchester", "generos": ["Electrónica", "Hip-Hop", "Pop"], "promotor": "The Warehouse Project", "entradas": "https://parklife.uk.com" },
+      { "nombre": "Boardmasters", "ubicacion": "Cornualles", "generos": ["Indie", "Electrónica", "Surf"], "promotor": "Vision Nine", "entradas": "https://boardmasters.com" },
+      { "nombre": "All Points East", "ubicacion": "Londres", "generos": ["Indie", "Alternativo", "Electrónica"], "promotor": "AEG Presents", "entradas": "https://www.allpointseastfestival.com" },
+      { "nombre": "Wireless Festival", "ubicacion": "Londres", "generos": ["Hip-Hop", "Grime", "R&B"], "promotor": "Festival Republic", "entradas": "https://wirelessfestival.co.uk" },
+      { "nombre": "Latitude Festival", "ubicacion": "Suffolk", "generos": ["Indie", "Pop", "Artes"], "promotor": "Festival Republic", "entradas": "https://www.latitudefestival.com" },
+      { "nombre": "TRNSMT", "ubicacion": "Glasgow", "generos": ["Indie", "Rock", "Pop"], "promotor": "DF Concerts", "entradas": "https://trnsmtfest.com" },
+      { "nombre": "BST Hyde Park", "ubicacion": "Londres", "generos": ["Pop", "Rock"], "promotor": "AEG Presents", "entradas": "https://www.bst-hydepark.com" },
+      { "nombre": "Camp Bestival", "ubicacion": "Dorset", "generos": ["Pop", "Familiar", "Electrónica"], "promotor": "Bestival Ltd", "entradas": "https://campbestival.net" },
+      { "nombre": "Field Day", "ubicacion": "Londres", "generos": ["Electrónica", "Experimental"], "promotor": "Broadwick Live / AEG", "entradas": "https://fielddayfestivals.com" },
+      { "nombre": "Bloodstock Open Air", "ubicacion": "Derbyshire", "generos": ["Heavy Metal extremo"], "promotor": "Amust4music Ltd", "entradas": "https://www.bloodstock.uk.com" },
+      { "nombre": "Kendal Calling", "ubicacion": "Cumbria", "generos": ["Indie", "Rock", "Pop"], "promotor": "From the Fields", "entradas": "https://www.kendalcalling.co.uk" },
+      { "nombre": "We Out Here", "ubicacion": "Dorset", "generos": ["Jazz", "Soul", "Electrónica"], "promotor": "Brownswood Music", "entradas": "https://weoutherefestival.com" },
+      { "nombre": "Secret Garden Party", "ubicacion": "Cambridgeshire", "generos": ["Electrónica", "Indie"], "promotor": "SGP", "entradas": "https://www.secretgardenparty.com" }
+    ],
+    "Alemania": [
+      { "nombre": "Wacken Open Air", "ubicacion": "Wacken", "generos": ["Metal", "Hard Rock"], "promotor": "ICS Festival Service", "entradas": "https://www.metaltix.com" },
+      { "nombre": "Rock am Ring", "ubicacion": "Nürburgring", "generos": ["Rock", "Metal", "Punk"], "promotor": "DreamHaus / Eventim Live", "entradas": "https://www.rock-am-ring.com" },
+      { "nombre": "Rock im Park", "ubicacion": "Núremberg", "generos": ["Rock", "Metal", "Punk"], "promotor": "DreamHaus / Argo", "entradas": "https://www.rock-im-park.com" },
+      { "nombre": "Hurricane Festival", "ubicacion": "Scheeßel", "generos": ["Indie", "Rock", "Pop"], "promotor": "FKP Scorpio", "entradas": "https://www.hurricane.de" },
+      { "nombre": "Southside Festival", "ubicacion": "Neuhausen", "generos": ["Indie", "Rock", "Pop"], "promotor": "FKP Scorpio", "entradas": "https://www.southside.de" },
+      { "nombre": "Parookaville", "ubicacion": "Weeze", "generos": ["EDM", "Hardstyle"], "promotor": "Parookaville GmbH", "entradas": "https://tickets.parookaville.com" },
+      { "nombre": "Time Warp", "ubicacion": "Mannheim", "generos": ["Techno", "House"], "promotor": "Cosmopop", "entradas": "https://www.time-warp.de" },
+      { "nombre": "Nature One", "ubicacion": "Kastellaun", "generos": ["Trance", "Techno", "EDM"], "promotor": "I-Motion", "entradas": "https://www.nature-one.de" },
+      { "nombre": "Splash! Festival", "ubicacion": "Ferropolis", "generos": ["Hip-Hop", "Rap", "Urbana"], "promotor": "Goodlive", "entradas": "https://splash-festival.de" },
+      { "nombre": "Fusion Festival", "ubicacion": "Lärz", "generos": ["Electrónica", "Alternativo"], "promotor": "Kulturkosmos Müritz e.V.", "entradas": "https://www.fusion-festival.de" },
+      { "nombre": "Lollapalooza Berlin", "ubicacion": "Berlín", "generos": ["Pop", "Rock", "Electrónica"], "promotor": "C3 Presents / Goodlive", "entradas": "https://www.lollapaloozade.com" },
+      { "nombre": "Airbeat One", "ubicacion": "Neustadt-Glewe", "generos": ["EDM", "Trance", "Hardstyle"], "promotor": "Music Eggert", "entradas": "https://airbeat-one.de" },
+      { "nombre": "Highfield Festival", "ubicacion": "Leipzig", "generos": ["Indie", "Punk", "Rock"], "promotor": "FKP Scorpio", "entradas": "https://highfield.de" },
+      { "nombre": "Deichbrand", "ubicacion": "Cuxhaven", "generos": ["Rock", "Pop", "Hip-Hop"], "promotor": "FKP Scorpio", "entradas": "https://www.deichbrand.de" },
+      { "nombre": "Summer Breeze", "ubicacion": "Dinkelsbühl", "generos": ["Metal", "Death Metal"], "promotor": "Silver Dust GmbH", "entradas": "https://www.sboa.de" },
+      { "nombre": "MS Dockville", "ubicacion": "Hamburgo", "generos": ["Indie", "Arte", "Electrónica"], "promotor": "Kopf & Steine GmbH", "entradas": "https://msdockville.de" },
+      { "nombre": "Melt! Festival", "ubicacion": "Ferropolis", "generos": ["Electrónica", "Indie"], "promotor": "Goodlive", "entradas": "https://www.meltfestival.de" },
+      { "nombre": "Wave-Gotik-Treffen", "ubicacion": "Leipzig", "generos": ["Gótico", "Darkwave", "Industrial"], "promotor": "Treffen & Festspielgesellschaft", "entradas": "https://www.wave-gotik-treffen.de" },
+      { "nombre": "Reeperbahn Festival", "ubicacion": "Hamburgo", "generos": ["Indie", "Alternativo"], "promotor": "RBX GmbH", "entradas": "https://www.reeperbahnfestival.com" },
+      { "nombre": "Taubertal-Festival", "ubicacion": "Rothenburg", "generos": ["Rock", "Punk", "Indie"], "promotor": "KARO Konzert-Agentur", "entradas": "https://taubertal-festival.de" }
+    ],
+    "EEUU": [
+      { "nombre": "Coachella", "ubicacion": "Indio, CA", "generos": ["Pop", "Indie", "Hip-Hop"], "promotor": "Goldenvoice (AEG)", "entradas": "https://www.coachella.com" },
+      { "nombre": "Lollapalooza", "ubicacion": "Chicago, IL", "generos": ["Rock", "Pop", "Electrónica"], "promotor": "C3 Presents (Live Nation)", "entradas": "https://www.lollapalooza.com" },
+      { "nombre": "EDC Las Vegas", "ubicacion": "Las Vegas, NV", "generos": ["EDM", "Techno", "Bass"], "promotor": "Insomniac (Live Nation)", "entradas": "https://lasvegas.electricdaisycarnival.com" },
+      { "nombre": "Bonnaroo", "ubicacion": "Manchester, TN", "generos": ["Indie", "Jam", "Hip-Hop"], "promotor": "Superfly / C3 Presents", "entradas": "https://www.bonnaroo.com" },
+      { "nombre": "Austin City Limits", "ubicacion": "Austin, TX", "generos": ["Rock", "Indie", "Country"], "promotor": "C3 Presents", "entradas": "https://www.aclfestival.com" },
+      { "nombre": "Ultra Music Festival", "ubicacion": "Miami, FL", "generos": ["EDM", "Techno", "House"], "promotor": "Ultra Enterprises", "entradas": "https://ultramusicfestival.com" },
+      { "nombre": "Outside Lands", "ubicacion": "San Francisco, CA", "generos": ["Indie", "Pop", "Rock"], "promotor": "Another Planet Entertainment", "entradas": "https://sfoutsidelands.com" },
+      { "nombre": "Governors Ball", "ubicacion": "Nueva York, NY", "generos": ["Pop", "Hip-Hop", "Indie"], "promotor": "Founders Entertainment", "entradas": "https://www.governorsballmusicfestival.com" },
+      { "nombre": "Rolling Loud", "ubicacion": "Miami, FL", "generos": ["Hip-Hop", "Rap"], "promotor": "Rolling Loud", "entradas": "https://www.rollingloud.com" },
+      { "nombre": "Stagecoach", "ubicacion": "Indio, CA", "generos": ["Country", "Folk", "Americana"], "promotor": "Goldenvoice (AEG)", "entradas": "https://www.stagecoachfestival.com" },
+      { "nombre": "Riot Fest", "ubicacion": "Chicago, IL", "generos": ["Punk", "Rock", "Alternativo"], "promotor": "Riot Fest Corp", "entradas": "https://riotfest.org" },
+      { "nombre": "Electric Forest", "ubicacion": "Rothbury, MI", "generos": ["Electrónica", "Jam Bands"], "promotor": "Madison House / Insomniac", "entradas": "https://www.electricforest.com" },
+      { "nombre": "Boston Calling", "ubicacion": "Boston, MA", "generos": ["Indie", "Rock", "Pop"], "promotor": "Crash Line Productions", "entradas": "https://bostoncalling.com" },
+      { "nombre": "Aftershock", "ubicacion": "Sacramento, CA", "generos": ["Heavy Metal", "Hard Rock"], "promotor": "Danny Wimmer Presents", "entradas": "https://aftershockfestival.com" },
+      { "nombre": "Louder Than Life", "ubicacion": "Louisville, KY", "generos": ["Metal", "Rock"], "promotor": "Danny Wimmer Presents", "entradas": "https://louderthanlifefestival.com" },
+      { "nombre": "Movement", "ubicacion": "Detroit, MI", "generos": ["Techno", "Electrónica underground"], "promotor": "Paxahau", "entradas": "https://movementfestival.com" },
+      { "nombre": "Pitchfork Music Festival", "ubicacion": "Chicago, IL", "generos": ["Indie", "Alternativo"], "promotor": "Pitchfork Media", "entradas": "https://pitchforkmusicfestival.com" },
+      { "nombre": "Sonic Temple", "ubicacion": "Columbus, OH", "generos": ["Metal", "Hard Rock"], "promotor": "Danny Wimmer Presents", "entradas": "https://sonictemplefestival.com" },
+      { "nombre": "SXSW", "ubicacion": "Austin, TX", "generos": ["Multigénero"], "promotor": "SXSW LLC", "entradas": "https://www.sxsw.com" },
+      { "nombre": "New Orleans Jazz & Heritage Fest", "ubicacion": "Nueva Orleans, LA", "generos": ["Jazz", "Blues", "R&B"], "promotor": "Festival Productions / AEG", "entradas": "https://www.nojazzfest.com" }
+    ]
+  }
+}
