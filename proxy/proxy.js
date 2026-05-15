@@ -6,6 +6,8 @@ import fetch from 'node-fetch'
 import { SpotifyService } from './services/spotify.js'
 import { TicketmasterService } from './services/ticketmaster.js'
 import { FestivalService } from './services/festivals.js'
+import { LastfmService } from './services/lastfm.js'
+import { SmartRecommendationsService } from './services/smart-recommendations.js'
 
 // --- Haversine distance in km between two lat/lng points ---
 const haversineKm = (lat1, lon1, lat2, lon2) => {
@@ -49,6 +51,31 @@ const getFestivalCoords = (cityStr) => {
 
 dotenv.config()
 
+// Genre slug → Ticketmaster classification name mapping
+const GENRE_TO_TICKETMASTER = {
+    'rock': 'Rock',
+    'pop': 'Pop',
+    'hip-hop': 'Hip-Hop/Rap',
+    'rap': 'Hip-Hop/Rap',
+    'electronic': 'Electronic',
+    'metal': 'Metal',
+    'indie': 'Alternative',
+    'techno': 'Techno',
+    'punk': 'Punk',
+    'rnb': 'R&B',
+    'latin': 'Latin',
+    'classical': 'Classical',
+    'jazz': 'Jazz',
+    'folk': 'Folk',
+    'country': 'Country',
+    'blues': 'Blues',
+    'reggae': 'Reggae',
+    'soul': 'Soul',
+    'alternative': 'Alternative',
+    'indie rock': 'Alternative',
+    'k-pop': 'K-Pop',
+};
+
 // Initialize festival engine in background (scrapes festival sites)
 FestivalService.initialize();
 
@@ -79,9 +106,29 @@ app.get('/recommendations/concerts', async (req, res) => {
     }
 
     try {
-        console.log(`🎯 Recs for: ${seed_artist_name} near ${city || latlong}`);
+        console.log(`🎯 Recs for: ${seed_artist_name} near ${city || latlong}, genres: ${genres || 'none'}`);
         
-        // Fetch from Ticketmaster (existing)
+        // ========== STRATEGY 1: Genre-based search (PRIMARY when genres available) ==========
+        // When user has genres, search TM by classification for each genre
+        // This gives genre-relevant concerts near the user
+        const userGenres = genres ? genres.split(',') : [];
+        const genreSearchRadius = parseFloat(radius) || 200;
+
+        const genrePromises = userGenres
+            .slice(0, 3) // Top 3 genres max
+            .map(genre => {
+                const tmGenre = GENRE_TO_TICKETMASTER[genre.toLowerCase().trim()] || genre;
+                // IMPORTANT: For concert recommendations, ALWAYS use latlong+radius, NEVER countryCode
+                // This ensures we only get concerts within user's configured radius
+                return SmartRecommendationsService.getUpcomingByGenre(
+                    tmGenre, latlong, genreSearchRadius, 15, null // Pass null for countryCode
+                ).catch(err => {
+                    console.warn(`Genre search failed for ${genre}:`, err.message);
+                    return [];
+                });
+            });
+
+        // ========== STRATEGY 2: Seed artist-based (SUPPLEMENT) ==========
         const tmEventsPromise = TicketmasterService.getConcertRecommendations({
             seedArtistName: seed_artist_name,
             city,
@@ -92,8 +139,7 @@ app.get('/recommendations/concerts', async (req, res) => {
             return [];
         });
 
-        // Fetch from Festival Engine (new)
-        const userGenres = genres ? genres.split(',') : [];
+        // ========== STRATEGY 3: Festival Engine (genre-filtered) ==========
         let festivalArtists = userGenres.length > 0
             ? FestivalService.getDiscoverArtists(userGenres)
             : [];
@@ -101,11 +147,11 @@ app.get('/recommendations/concerts', async (req, res) => {
         // Filter festival artists by distance using haversine (requires user latlong)
         if (latlong && festivalArtists.length > 0) {
             const [userLat, userLng] = latlong.split(',').map(parseFloat);
-            const maxKm = parseFloat(radius) || 200; // generous radius for festivals
+            const maxKm = parseFloat(radius) || 200;
 
             const filtered = festivalArtists.filter(a => {
                 const coords = getFestivalCoords(a.city);
-                if (!coords) return false; // skip if city unknown in our table
+                if (!coords) return false;
                 const distKm = haversineKm(userLat, userLng, coords[0], coords[1]);
                 return distKm <= maxKm;
             });
@@ -113,11 +159,16 @@ app.get('/recommendations/concerts', async (req, res) => {
             console.log(`📍 [Recs] Festival filter: ${festivalArtists.length} → ${filtered.length} within ${maxKm}km of [${latlong}]`);
             festivalArtists = filtered;
         } else {
-            // No location provided → hide festival artists to avoid global noise
             festivalArtists = [];
         }
 
-        const tmEvents = await tmEventsPromise;
+        // ========== Wait for all results in parallel ==========
+        const [tmEvents, ...genreEventArrays] = await Promise.all([
+            tmEventsPromise,
+            ...genrePromises
+        ]);
+
+        const genreEvents = genreEventArrays.flat();
 
         // Filter out TM noise (passes, tickets, non-artist events)
         const tmNoiseWords = ['abono', 'abonos', 'entrada', 'entradas', 'camping', 'vip pass', 'parking'];
@@ -125,18 +176,18 @@ app.get('/recommendations/concerts', async (req, res) => {
             const name = (e.name || '').toLowerCase();
             const artistName = (e._embedded?.attractions?.[0]?.name || e.artistName || '').toLowerCase();
             
-            // If the event name or attraction name contains a noise word, skip it
             if (tmNoiseWords.some(w => name.includes(w) || artistName.includes(w))) {
                 return false;
             }
             return true;
         });
 
-        // Merge: TM events first, then festival-sourced (tagged with source)
+        // Merge: Genre events FIRST (genre-relevant), then seed-based TM, then festivals
+        const genreTagged = genreEvents.map(e => ({ ...e, source: 'genre' }));
         const tmTagged = filteredTmEvents.map(e => ({ ...e, source: 'ticketmaster' }));
-        const merged = [...tmTagged, ...festivalArtists];
+        const merged = [...genreTagged, ...tmTagged, ...festivalArtists];
 
-        // Deduplicate by artist name (keep first)
+        // Deduplicate by artist name (keep first = genre results have priority)
         const seen = new Set();
         const deduped = merged.filter(e => {
             const key = (e._embedded?.attractions?.[0]?.name || e.artistName || e.name || '').toLowerCase();
@@ -168,7 +219,11 @@ app.get('/recommendations/concerts', async (req, res) => {
         res.json({
             seed: seed_artist_name,
             events: deduped,
-            sources: { ticketmaster: tmTagged.length, festival: festivalArtists.length }
+            sources: { 
+                genre: genreEvents.length,
+                ticketmaster: tmTagged.length, 
+                festival: festivalArtists.length 
+            }
         });
     } catch (err) {
         console.error('Recs Error:', err.message);
@@ -311,26 +366,74 @@ app.get('/recommendations/artists', async (req, res) => {
     if (!seed_artist_name) return res.status(400).json({ error: 'Missing seed_artist_name' });
     
     try {
-        // 1. Find the Spotify ID for the artist name
+        console.log(`🎯 [Proxy] Getting recommendations for: ${seed_artist_name}`);
+        
+        // STRATEGY 1: Last.fm (Data-driven, no hardcode, basado en scrobbling real)
+        const lastfmArtists = await LastfmService.getSimilarArtists(seed_artist_name, 10);
+        
+        if (lastfmArtists.length > 0) {
+            console.log(`✅ [Proxy] Last.fm found ${lastfmArtists.length} similar artists`);
+            
+            // Enrich with Spotify data for images (if available)
+            let enrichedArtists = lastfmArtists;
+            try {
+                const spotifyResults = await SpotifyService.searchArtists(seed_artist_name);
+                if (spotifyResults && spotifyResults.length > 0) {
+                    // Try to get images for each similar artist from Spotify
+                    const imagePromises = lastfmArtists.map(async (artist) => {
+                        try {
+                            const spotifySearch = await SpotifyService.searchArtists(artist.name);
+                            if (spotifySearch && spotifySearch.length > 0) {
+                                return {
+                                    ...artist,
+                                    image: spotifySearch[0].images?.[0]?.url,
+                                    external_url: spotifySearch[0].external_urls?.spotify
+                                };
+                            }
+                        } catch (e) {
+                            // Spotify might fail, that's ok
+                        }
+                        return artist;
+                    });
+                    enrichedArtists = await Promise.all(imagePromises);
+                }
+            } catch (spotifyErr) {
+                console.log(`⚠️ [Proxy] Spotify enrichment failed (non-critical): ${spotifyErr.message}`);
+            }
+            
+            return res.json({
+                seed: seed_artist_name,
+                source: 'lastfm',
+                recommendations: enrichedArtists.map(a => ({
+                    id: `lastfm-${a.name}`,
+                    name: a.name,
+                    image: a.image,
+                    match: a.match,
+                    external_url: a.external_url || a.url
+                }))
+            });
+        }
+        
+        // STRATEGY 2: Fallback to Spotify (if Last.fm fails and Spotify is working)
+        console.log(`⚠️ [Proxy] Last.fm returned no results. Trying Spotify...`);
         const searchResults = await SpotifyService.searchArtists(seed_artist_name);
         if (!searchResults || searchResults.length === 0) {
             console.log(`⚠️ Artist not found for seeding: ${seed_artist_name}`);
             return res.json({ seed: seed_artist_name, recommendations: [] }); 
         }
         
-        const bestMatch = searchResults[0]; // Assume first result is correct
+        const bestMatch = searchResults[0];
+        console.log(`🎯 [Proxy] Spotify Seed Artist Found: ${bestMatch.name} (${bestMatch.id})`);
         
-        console.log(`🎯 [Proxy] Seed Artist Found: ${bestMatch.name} (${bestMatch.id}) Genres: ${bestMatch.genres}`);
-        
-        // 2. Get recommendations based on this artist seed
-        // Pass genres to avoid extra lookup
         const related = await SpotifyService.getRecommendations([bestMatch.id], bestMatch.genres || []);
         
         res.json({
             seed: bestMatch.name,
+            source: 'spotify',
             recommendations: related
         });
     } catch (err) {
+        console.error(`❌ [Proxy] Error in /recommendations/artists: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -426,6 +529,131 @@ app.get('/festivals/status', (req, res) => {
         loaded: festivals.length,
         countries: [...new Set(festivals.map(f => f.pais))],
     });
+});
+
+// --- SMART RECOMMENDATIONS (lógica coherente) ---
+
+/**
+ * GET /recommendations/your-artists-on-tour
+ * 
+ * Recibe lista de artistas seguidos, devuelve SOLO los que tienen conciertos próximos.
+ * No más artistas sin gira.
+ * 
+ * Query params:
+ *   - artists: comma-separated list of artist names
+ *   - latlong: optional user location
+ *   - radius: search radius in km (default: 200)
+ *   - countryCode: optional ISO 3166-1 alpha-2 country code (e.g., "ES", "FR", "GB")
+ *                  When provided, uses country-level filtering instead of latlong+radius
+ */
+app.get('/recommendations/your-artists-on-tour', async (req, res) => {
+    const { artists, latlong, radius, countryCode } = req.query;
+    
+    if (!artists) {
+        return res.status(400).json({ error: 'Missing artists param (comma-separated names)' });
+    }
+
+    const artistList = artists.split(',').map(a => a.trim()).filter(Boolean);
+    
+    try {
+        const result = await SmartRecommendationsService.getYourArtistsOnTour(
+            artistList, 
+            latlong, 
+            parseInt(radius) || 200,
+            countryCode || null
+        );
+        
+        res.json({
+            totalFollowed: artistList.length,
+            withConcerts: result.length,
+            artists: result
+        });
+    } catch (err) {
+        console.error('❌ [SmartRecs] Error in your-artists-on-tour:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /recommendations/discover-with-concerts
+ * 
+ * Busca artistas similares al seed que REALMENTE tengan conciertos programados.
+ * Ahora soporta filtro por géneros para evitar resultados irrelevantes.
+ * 
+ * Query params:
+ *   - seed_artist_name: artista base para buscar similares
+ *   - latlong: optional user location
+ *   - radius: search radius in km (default: 200)
+ *   - limit: max results (default: 10)
+ *   - genres: comma-separated genre slugs for filtering (optional)
+ */
+app.get('/recommendations/discover-with-concerts', async (req, res) => {
+    const { seed_artist_name, latlong, radius, limit, genres, countryCode } = req.query;
+
+    if (!seed_artist_name) {
+        return res.status(400).json({ error: 'Missing seed_artist_name' });
+    }
+
+    const genreList = genres ? genres.split(',').map(g => g.trim().toLowerCase()).filter(Boolean) : [];
+
+    try {
+        const result = await SmartRecommendationsService.getDiscoverArtistsWithConcerts(
+            seed_artist_name,
+            latlong,
+            parseInt(radius) || 200,
+            parseInt(limit) || 10,
+            genreList,
+            countryCode || null
+        );
+        
+        res.json({
+            seed: seed_artist_name,
+            count: result.length,
+            artists: result
+        });
+    } catch (err) {
+        console.error('❌ [SmartRecs] Error in discover-with-concerts:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /recommendations/upcoming-by-genre
+ * 
+ * Devuelve conciertos reales próximos por género.
+ * Reemplaza el "trending" basado en popularidad histórica.
+ * 
+ * Query params:
+ *   - genre: género musical
+ *   - latlong: optional user location
+ *   - radius: search radius in km (default: 200)
+ *   - limit: max results (default: 15)
+ */
+app.get('/recommendations/upcoming-by-genre', async (req, res) => {
+    const { genre, latlong, radius, limit, countryCode } = req.query;
+
+    if (!genre) {
+        return res.status(400).json({ error: 'Missing genre param' });
+    }
+
+    try {
+        const events = await SmartRecommendationsService.getUpcomingByGenre(
+            genre,
+            latlong,
+            parseInt(radius) || 200,
+            parseInt(limit) || 15,
+            countryCode || null
+        );
+        
+        res.json({
+            genre,
+            count: events.length,
+            events
+        });
+    } catch (err) {
+        console.error('❌ [SmartRecs] Error in upcoming-by-genre:', err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.get('/health', (req, res) => {
