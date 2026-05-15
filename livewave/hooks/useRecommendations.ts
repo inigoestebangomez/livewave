@@ -1,23 +1,55 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useUser } from '@supabase/auth-helpers-react'
-import { useFocusEffect } from 'expo-router'
 import { supabase } from '../app/lib/supabase'
 import {
-  getEventsForArtist,
   getConcertRecommendations,
-  getDiscoverArtists,
+  getYourArtistsOnTour,
+  getDiscoverWithConcerts,
+  getUpcomingByGenre,
 } from '../app/lib/api'
-import type { Event, DiscoverArtist } from '../types/api'
-import { getCityLabel } from './useCityLabel'
+import type { Event, DiscoverArtistWithConcerts } from '../types/api'
+import { getCityLabel, getCountryLabel, getCountryCode } from './useCityLabel'
 
+// Genre seed map for fallback when user has no followed artists
 const GENRE_SEED_MAP: Record<string, string> = {
   rock: 'Muse',
   pop: 'Dua Lipa',
   'hip-hop': 'Kendrick Lamar',
-  electronic: 'Daft Punk',
+  electronic: 'ODESZA',
   metal: 'Metallica',
   indie: 'Tame Impala',
   techno: 'Amelie Lens',
+}
+
+// In-memory cache with stale-while-revalidate support
+// Fresh (< 15 min): return immediately, no refetch
+// Stale (< 60 min): return immediately, refetch in background
+// Expired (> 60 min): discard, fetch fresh
+const cache = new Map<string, { data: unknown; timestamp: number }>()
+const CACHE_TTL = 15 * 60 * 1000 // 15 minutes (fresh)
+const CACHE_STALE_TTL = 60 * 60 * 1000 // 60 minutes (max stale age)
+
+interface CacheResult<T> {
+  data: T
+  fresh: boolean // true = within TTL, no refetch needed
+}
+
+function getCached<T>(key: string): CacheResult<T> | null {
+  const entry = cache.get(key)
+  if (!entry) return null
+  const age = Date.now() - entry.timestamp
+  if (age < CACHE_TTL) {
+    return { data: entry.data as T, fresh: true }
+  }
+  if (age < CACHE_STALE_TTL) {
+    return { data: entry.data as T, fresh: false }
+  }
+  cache.delete(key)
+  return null
+}
+
+function setCache(key: string, data: unknown) {
+  cache.set(key, { data, timestamp: Date.now() })
 }
 
 interface UseRecommendationsReturn {
@@ -25,10 +57,14 @@ interface UseRecommendationsReturn {
   refreshing: boolean
   seedArtist: string | null
   recommendedEvents: Event[]
-  yourEvents: Event[]
-  trendingArtists: DiscoverArtist[]
+  yourArtistsOnTour: { artistName: string; events: Event[]; eventCount: number; nextEvent: Event }[]
+  discoverArtists: DiscoverArtistWithConcerts[]
   userCity: string | undefined
   refresh: () => Promise<void>
+  // Progressive loading states
+  artistsOnTourLoading: boolean
+  discoverLoading: boolean
+  concertsLoading: boolean
 }
 
 /** Extrae el primer elemento de una relación Supabase (puede venir como objeto o array) */
@@ -43,25 +79,55 @@ export function useRecommendations(): UseRecommendationsReturn {
   const [refreshing, setRefreshing] = useState(false)
   const [seedArtist, setSeedArtist] = useState<string | null>(null)
   const [recommendedEvents, setRecommendedEvents] = useState<Event[]>([])
-  const [yourEvents, setYourEvents] = useState<Event[]>([])
-  const [trendingArtists, setTrendingArtists] = useState<DiscoverArtist[]>([])
+  const [yourArtistsOnTour, setYourArtistsOnTour] = useState<{ artistName: string; events: Event[]; eventCount: number; nextEvent: Event }[]>([])
+  const [discoverArtists, setDiscoverArtists] = useState<DiscoverArtistWithConcerts[]>([])
   const [userCity, setUserCity] = useState<string | undefined>(undefined)
+  
+  // Refs to capture current state values for caching
+  const recommendedEventsRef = useRef(recommendedEvents);
+  const yourArtistsOnTourRef = useRef(yourArtistsOnTour);
+  const discoverArtistsRef = useRef(discoverArtists);
+  
+  // Progressive loading states
+  const [artistsOnTourLoading, setArtistsOnTourLoading] = useState(true)
+  const [discoverLoading, setDiscoverLoading] = useState(true)
+  const [concertsLoading, setConcertsLoading] = useState(true)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
+  // Guard against concurrent fetches and stale overwrites
+  const fetchingRef = useRef(false)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  const fetchData = useCallback(async (forceFresh = false) => {
     if (!user) {
       setLoading(false)
+      setArtistsOnTourLoading(false)
+      setDiscoverLoading(false)
+      setConcertsLoading(false)
       return
     }
 
-    try {
-      // 0. Obtener géneros del usuario
-      const { data: userGenresData } = await supabase
-        .from('user_genres')
-        .select('genres(slug)')
-        .eq('user_id', user.id)
+    // Prevent concurrent fetches
+    if (fetchingRef.current) return
+    fetchingRef.current = true
 
-      const genreSlugs = (userGenresData || [])
+    const userId = user.id
+
+    try {
+      // ========== Step 1: Fetch user config ==========
+      const [userGenresResult, profileResult, followsResult] = await Promise.all([
+        supabase.from('user_genres').select('genres(slug)').eq('user_id', userId),
+        supabase.from('profiles').select('location_latitude, location_longitude, radius_km').eq('id', userId).single(),
+        supabase.from('user_follows').select('artist:artists(name)').eq('user_id', userId).limit(50),
+      ])
+
+      if (!mountedRef.current) return
+
+      const genreSlugs = (userGenresResult.data || [])
         .map((ug: { genres?: { slug?: string } | { slug?: string }[] | null }) => {
           const g = firstRelation(ug.genres)
           return g?.slug
@@ -69,139 +135,246 @@ export function useRecommendations(): UseRecommendationsReturn {
         .filter((s): s is string => !!s)
 
       let userLatLong: string | undefined
-      let userRadius = 50
+      let userRadius = 200
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('location_latitude, location_longitude, radius_km')
-        .eq('id', user.id)
-        .single()
-
+      const profile = profileResult.data
+      let userCountryCode: string | null = null
       if (profile) {
         if (profile.radius_km) userRadius = profile.radius_km
         if (profile.location_latitude && profile.location_longitude) {
           userLatLong = `${profile.location_latitude},${profile.location_longitude}`
           const lat = parseFloat(String(profile.location_latitude))
           const lng = parseFloat(String(profile.location_longitude))
-          setUserCity(getCityLabel(lat, lng))
+          userCountryCode = getCountryCode(lat, lng)
+          setUserCity(getCountryLabel(lat, lng))
         }
       }
 
-      // 2. Artistas seguidos
-      const { data: follows } = await supabase
-        .from('user_follows')
-        .select('artist:artists(name)')
-        .eq('user_id', user.id)
-        .limit(50)
+      // ========== Step 2: Stale-While-Revalidate cache check ==========
+      const cacheKey = `recs-${userId}-${userCountryCode || 'local'}`
+      const cached = getCached<{
+        seedArtist: string | null
+        recommendedEvents: Event[]
+        yourArtistsOnTour: typeof yourArtistsOnTour
+        discoverArtists: DiscoverArtistWithConcerts[]
+        userCity: string | undefined
+      }>(cacheKey)
 
-      const allFollowedNames = (follows || [])
+      if (cached && !forceFresh) {
+        // Show cached data INSTANTLY — no loading flash
+        setSeedArtist(cached.data.seedArtist)
+        setRecommendedEvents(cached.data.recommendedEvents)
+        setYourArtistsOnTour(cached.data.yourArtistsOnTour)
+        setDiscoverArtists(cached.data.discoverArtists)
+        setUserCity(cached.data.userCity)
+        setLoading(false)
+        setArtistsOnTourLoading(false)
+        setDiscoverLoading(false)
+        setConcertsLoading(false)
+
+        // If cache is fresh, skip re-fetch entirely
+        if (cached.fresh) {
+          fetchingRef.current = false
+          return
+        }
+        // Stale: show cached data now, re-validate in background (fall through)
+      }
+
+      const allFollowedNames = (followsResult.data || [])
         .map((f: { artist?: { name?: string } | { name?: string }[] | null }) => {
           const a = firstRelation(f.artist)
           return a?.name
         })
         .filter((n): n is string => !!n)
 
-      const namesForEvents = [...allFollowedNames]
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 15)
+      if (!mountedRef.current) return
 
-      if (namesForEvents.length > 0) {
-        const promises = namesForEvents.map(name =>
-          getEventsForArtist(name, userLatLong, 2000)
-        )
-        const results = await Promise.all(promises)
-        const eventsFlat = results
-          .flat()
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        setYourEvents(
-          Array.from(new Map(eventsFlat.map(item => [item.id, item])).values())
-        )
-      } else {
-        setYourEvents([])
+      // Only show skeleton loading if we have NO cached data (first load)
+      if (!cached || forceFresh) {
+        setLoading(true)
+        setArtistsOnTourLoading(true)
+        setDiscoverLoading(true)
+        setConcertsLoading(true)
       }
 
-      // 4. Selección de seed artist
-      let seedName: string | null = null
+      // ========== Step 3: Build recommendation strategy ==========
+      const artistsToCheck = allFollowedNames.slice(0, 15)
 
+      let seedName: string | null = null
       if (allFollowedNames.length > 0) {
         seedName = allFollowedNames[Math.floor(Math.random() * allFollowedNames.length)]
+      } else {
+        seedName = genreSlugs.length > 0 
+          ? GENRE_SEED_MAP[genreSlugs[0]] || 'Coldplay'
+          : 'Coldplay'
       }
 
-      if (!seedName) {
-        const { data: userEvents } = await supabase
-          .from('user_events')
-          .select('event_id')
-          .eq('user_id', user.id)
-          .limit(5)
+      // ========== Step 4: Launch independent fetches for progressive loading ==========
+      
+      // For Discover section, try multiple seeds instead of just one random artist
+      const discoverSeedNames = allFollowedNames.length > 0 
+        ? allFollowedNames.slice(0, 3)  // Use top 3 followed artists as potential seeds
+        : [genreSlugs.length > 0 
+            ? GENRE_SEED_MAP[genreSlugs[0]] || 'Coldplay'
+            : 'Coldplay'];
 
-        if (userEvents && userEvents.length > 0) {
-          const eventIds = userEvents.map((ue) => ue.event_id)
-          const { data: eventsData } = await supabase
-            .from('events')
-            .select('artist:artist_id(name)')
-            .in('id', eventIds)
-            .limit(5)
-
-          if (eventsData && eventsData.length > 0) {
-            const randomEvent = eventsData[Math.floor(Math.random() * eventsData.length)]
-            const artist = firstRelation<{ name?: string }>(
-              (randomEvent as { artist?: { name?: string } | { name?: string }[] }).artist
-            )
-            if (artist?.name) seedName = artist.name
+      // Launch all fetches independently - each updates its own state when done
+      const fetchArtistsOnTour = async () => {
+        try {
+          // For "Your Artists On Tour" - use countryCode for broader search since user follows these artists
+          const result = artistsToCheck.length > 0 
+            ? await getYourArtistsOnTour(artistsToCheck, userLatLong, userRadius, userCountryCode)
+            : []
+          if (mountedRef.current) {
+            setYourArtistsOnTour(result)
+            yourArtistsOnTourRef.current = result;
           }
+        } catch (error) {
+          console.error("Error fetching artists on tour:", error)
+          if (mountedRef.current) {
+            setYourArtistsOnTour([])
+          }
+        } finally {
+          if (mountedRef.current) setArtistsOnTourLoading(false)
         }
       }
 
-      if (!seedName) {
-        if (genreSlugs.length > 0) {
-          const randomGenre = genreSlugs[Math.floor(Math.random() * genreSlugs.length)]
-          seedName = GENRE_SEED_MAP[randomGenre] || 'Coldplay'
-        } else {
-          seedName = 'Coldplay'
+      const fetchDiscover = async () => {
+        try {
+          let discoverResult: DiscoverArtistWithConcerts[] = [];
+          // Try multiple seeds until one returns results or we run out
+          // Use countryCode + wider radius (3x) for Discover since we want to find similar artists
+          // touring the user's country, not just their immediate radius
+          for (const seed of discoverSeedNames) {
+            const result = await getDiscoverWithConcerts(seed, userLatLong, userRadius * 3, 8, genreSlugs, userCountryCode);
+            if (result && result.length > 0) {
+              discoverResult = result;
+              setSeedArtist(seed); // Update seed to the successful one
+              break;
+            }
+          }
+          if (mountedRef.current) {
+            setDiscoverArtists(discoverResult)
+            discoverArtistsRef.current = discoverResult;
+          }
+        } catch (error) {
+          console.error("Error fetching discover artists:", error)
+          if (mountedRef.current) {
+            setDiscoverArtists([])
+          }
+        } finally {
+          if (mountedRef.current) setDiscoverLoading(false)
         }
       }
 
-      // 5. Recomendaciones
-      if (seedName) {
-        setSeedArtist(seedName)
-        const response = await getConcertRecommendations(
-          seedName, undefined, userLatLong, userRadius, genreSlugs
-        )
+      const fetchConcerts = async () => {
+        try {
+          // Concert recommendations - use user latlong+radius, NOT countryCode, to stay within user's location
+          const concertsResponse = seedName 
+            ? await getConcertRecommendations(seedName, undefined, userLatLong, userRadius, genreSlugs)
+            : { seed: seedName, events: [] }
+          
+          // Fetch genre-based events - these should also use user's location, not country
+          const genrePromises = genreSlugs.slice(0, 3).map(genre =>
+            getUpcomingByGenre(genre, userLatLong, userRadius, 10, null) // Use null for countryCode to respect radius
+          );
+          const genreResults = await Promise.allSettled(genrePromises);
 
-        if (response?.events?.length > 0) {
+          // Merge genre-based events with seed-based events
+          const genreEvents = genreResults
+            .filter((r): r is PromiseFulfilledResult<{ genre: string; count: number; events: Event[] }> => r.status === 'fulfilled')
+            .map(r => r.value.events)
+            .flat()
+
           const uniqueEventsMap = new Map<string, Event>()
-          response.events.forEach((item) => {
+          // Genre events first (higher priority for genre relevance)
+          genreEvents.forEach((item) => {
             if (item.artistName && !uniqueEventsMap.has(item.artistName)) {
               uniqueEventsMap.set(item.artistName, item)
             }
           })
-          setRecommendedEvents(Array.from(uniqueEventsMap.values()))
-        } else {
-          setRecommendedEvents([])
+          // Then seed-based events (supplement, lower priority)
+          if (concertsResponse?.events?.length > 0) {
+            concertsResponse.events.forEach((item) => {
+              if (item.artistName && !uniqueEventsMap.has(item.artistName)) {
+                uniqueEventsMap.set(item.artistName, item)
+              }
+            })
+          }
+          const recommendedEvents = Array.from(uniqueEventsMap.values())
+
+          if (mountedRef.current) {
+            setRecommendedEvents(recommendedEvents)
+            recommendedEventsRef.current = recommendedEvents;
+            // Set seed artist if not already set by discover
+            if (!seedArtist && seedName) {
+              setSeedArtist(seedName);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching concert recommendations:", error)
+          if (mountedRef.current) {
+            setRecommendedEvents([])
+          }
+        } finally {
+          if (mountedRef.current) setConcertsLoading(false)
         }
       }
 
-      // 6. Trending
-      if (genreSlugs.length > 0) {
-        const discovered = await getDiscoverArtists(genreSlugs, userLatLong, userRadius)
-        setTrendingArtists(discovered.slice(0, 15))
+      // Wait for all promises to settle before caching
+      await Promise.allSettled([
+        fetchArtistsOnTour(),
+        fetchDiscover(),
+        fetchConcerts()
+      ]);
+
+      // Once all fetches are done, hide the main loading spinner
+      if (mountedRef.current) {
+        setLoading(false);
       }
+
+      // Cache results with the final state values
+      // NOTE: This caching happens after the state is updated by the async functions
+      if (forceFresh || !cached) {
+        setCache(cacheKey, {
+          seedArtist: seedName,
+          recommendedEvents: recommendedEventsRef.current, // Use ref to get final values
+          yourArtistsOnTour: yourArtistsOnTourRef.current, 
+          discoverArtists: discoverArtistsRef.current,
+          userCity: userLatLong ? getCountryLabel(
+            parseFloat(String(profile?.location_latitude)),
+            parseFloat(String(profile?.location_longitude))
+          ) : undefined,
+        });
+      }
+
     } catch (error) {
       console.error("Error loading recommendations:", error)
+      // Don't reset states on error — keep previous data
     } finally {
       setLoading(false)
+      fetchingRef.current = false
     }
   }, [user])
 
-  useFocusEffect(
-    useCallback(() => {
+  // Load data once when user is available
+  useEffect(() => {
+    if (user) {
       fetchData()
-    }, [fetchData])
-  )
+    }
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = useCallback(async () => {
+    // Clear cache on manual refresh
+    cache.clear()
+    fetchingRef.current = false // Allow new fetch
     setRefreshing(true)
-    await fetchData()
+    setArtistsOnTourLoading(true)
+    setDiscoverLoading(true)
+    setConcertsLoading(true)
+
+    await fetchData(true) // forceFresh = true
+    
     setRefreshing(false)
   }, [fetchData])
 
@@ -210,9 +383,12 @@ export function useRecommendations(): UseRecommendationsReturn {
     refreshing,
     seedArtist,
     recommendedEvents,
-    yourEvents,
-    trendingArtists,
+    yourArtistsOnTour,
+    discoverArtists,
     userCity,
     refresh,
+    artistsOnTourLoading,
+    discoverLoading,
+    concertsLoading,
   }
 }

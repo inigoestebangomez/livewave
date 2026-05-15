@@ -181,3 +181,152 @@ export async function getDiscoverArtists(genres: string[], latlong?: string, rad
     return []
   }
 }
+
+// === NUEVAS FUNCIONES COHERENTES ===
+
+export interface ArtistOnTour {
+  artistName: string
+  events: Event[]
+  eventCount: number
+  nextEvent: Event
+}
+
+/**
+ * Obtiene SOLO los artistas seguidos que tienen conciertos próximos
+ * 
+ * When countryCode is provided, uses country-level filtering for TM API
+ * instead of latlong+radius
+ */
+export async function getYourArtistsOnTour(
+  artistNames: string[],
+  latlong?: string,
+  radius?: number,
+  countryCode?: string | null
+): Promise<ArtistOnTour[]> {
+  try {
+    const params = new URLSearchParams({
+      artists: artistNames.join(',')
+    })
+    if (latlong) params.append('latlong', latlong)
+    if (radius) params.append('radius', String(radius))
+    if (countryCode) params.append('countryCode', countryCode)
+
+    const url = `${API_URL}/recommendations/your-artists-on-tour?${params.toString()}`
+    console.log(`🎵 [API] Your Artists On Tour: ${artistNames.length} artists (countryCode: ${countryCode || 'local'})`)
+
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.warn(`Your Artists On Tour failed: ${response.status}`)
+      return []
+    }
+
+    const data = await response.json()
+    return data.artists || []
+  } catch (error) {
+    console.error('getYourArtistsOnTour Error:', error)
+    return []
+  }
+}
+
+export interface DiscoverArtistWithConcerts {
+  id: string
+  name: string
+  artistName: string
+  image?: string
+  match: number
+  source: string
+  genre?: string
+  events: Event[]
+  eventCount: number
+  url?: string
+}
+
+/**
+ * Descubre artistas similares que REALMENTE tienen conciertos programados
+ * Reemplaza el "trending" engañoso
+ */
+export async function getDiscoverWithConcerts(
+  seedArtistName: string,
+  latlong?: string,
+  radius?: number,
+  limit?: number,
+  genres?: string[],
+  countryCode?: string | null
+): Promise<DiscoverArtistWithConcerts[]> {
+  try {
+    const params = new URLSearchParams({
+      seed_artist_name: seedArtistName
+    })
+    if (latlong) params.append('latlong', latlong)
+    if (radius) params.append('radius', String(radius))
+    if (limit) params.append('limit', String(limit))
+    if (genres && genres.length > 0) params.append('genres', genres.join(','))
+    if (countryCode) params.append('countryCode', countryCode)
+
+    const url = `${API_URL}/recommendations/discover-with-concerts?${params.toString()}`
+    console.log(`🎵 [API] Discover With Concerts: seed=${seedArtistName}, genres=${genres?.join(',') || 'none'}`)
+
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.warn(`Discover With Concerts failed: ${response.status}`)
+      return []
+    }
+
+    const data = await response.json()
+    return data.artists || []
+  } catch (error) {
+    console.error('getDiscoverWithConcerts Error:', error)
+    return []
+  }
+}
+
+/**
+ * Obtiene conciertos próximos por género (búsqueda por clasificación en Ticketmaster)
+ * Usa mapeo de slugs a nombres de clasificación TM
+ */
+export async function getUpcomingByGenre(
+  genre: string,
+  latlong?: string,
+  radius?: number,
+  limit?: number,
+  countryCode?: string | null
+): Promise<{ genre: string; count: number; events: Event[] }> {
+  try {
+    const params = new URLSearchParams({ genre })
+    if (latlong) params.append('latlong', latlong)
+    if (radius) params.append('radius', String(radius))
+    if (limit) params.append('limit', String(limit))
+    if (countryCode) params.append('countryCode', countryCode)
+
+    const url = `${API_URL}/recommendations/upcoming-by-genre?${params.toString()}`
+    console.log(`🎸 [API] Upcoming by genre: ${genre}`)
+
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.warn(`Upcoming by genre failed: ${response.status}`)
+      return { genre, count: 0, events: [] }
+    }
+
+    const data = await response.json()
+
+    // Map TM events to our Event format
+    const events: Event[] = (data.events || []).map((e: any) => ({
+      id: e.id,
+      name: e.name,
+      date: e.date || '',
+      venue: e.venue || '',
+      city: e.city || '',
+      country: e.country || '',
+      image: e.image,
+      url: e.url,
+      artistName: e.artistName || e.name,
+      genre: e.genre || genre,
+      source: e.source || 'genre',
+    }))
+
+    return { genre: data.genre || genre, count: data.count || 0, events }
+  } catch (error) {
+    console.error('getUpcomingByGenre Error:', error)
+    return { genre, count: 0, events: [] }
+  }
+}

@@ -48,3 +48,17 @@ export interface ConcertRecommendationResponse {
     festival: number
   }
 }
+
+// Nuevo tipo para artistas descubiertos que REALMENTE tienen conciertos
+export interface DiscoverArtistWithConcerts {
+  id: string
+  name: string
+  artistName: string
+  image?: string
+  match: number
+  source: string
+  genre?: string
+  events: Event[]
+  eventCount: number
+  url?: string
+}
