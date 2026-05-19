@@ -386,8 +386,8 @@ export const SmartRecommendationsService = {
                     name: `${match.name} @ ${venue?.name || match.name}`,
                     date: match.date || null, // Use manual date from JSON if available
                     venue: venue?.name || '',
-                    city: venue?.city?.name || '',
-                    country: venue?.country?.name || '',
+                    city: match.city || venue?.city?.name || '',
+                    country: match.country || venue?.country?.name || '',
                     image: null, // No image from festival scraping
                     url: match.url || '',
                     artistName: match.name,
@@ -407,7 +407,14 @@ export const SmartRecommendationsService = {
                 const targetCountry = COUNTRY_CODE_MAP[countryCode];
                 if (targetCountry) {
                     const beforeFilter = festivalEvents.length;
-                    festivalEvents = festivalEvents.filter(event => event.country === targetCountry);
+                    festivalEvents = festivalEvents.filter(event => {
+                        const eventCountry = (event.country || '').toLowerCase();
+                        // Normalize country names: Espana/España/Spain are the same
+                        const isSpain = eventCountry === 'espana' || eventCountry === 'españa' || eventCountry === 'spain';
+                        const targetIsSpain = targetCountry.toLowerCase() === 'espana' || targetCountry.toLowerCase() === 'españa' || targetCountry.toLowerCase() === 'spain';
+                        if (targetIsSpain && isSpain) return true;
+                        return eventCountry === targetCountry.toLowerCase();
+                    });
                     if (beforeFilter !== festivalEvents.length) {
                         console.log(`🌍 [SmartRecs] Festival country filter for ${artistName}: ${beforeFilter} → ${festivalEvents.length} in ${targetCountry}`);
                     }

@@ -242,42 +242,57 @@ export function useRecommendations(): UseRecommendationsReturn {
 
       const fetchDiscover = async () => {
         try {
-          // Seeds: top 3 followed artists to get diverse similar-artist suggestions
-          const discoverSeeds = allFollowedNames.length > 0 
-            ? allFollowedNames.slice(0, 3)
-            : [genreSlugs.length > 0 
-                ? GENRE_SEED_MAP[genreSlugs[0]] || 'Coldplay'
-                : 'Coldplay'];
-          
-          // Run all seeds IN PARALLEL — backend handles its own rate limiting per seed
-          const seedResults = await Promise.allSettled(
-            discoverSeeds.map(seed =>
-              getDiscoverWithConcerts(
-                seed,
-                userLatLong,
-                userRadius,
-                10,
-                genreSlugs,
-                userCountryCode,
-                allFollowedNames  // Pass exclusion list to backend — no frontend filter needed
-              )
-            )
+          // Strategy: Use genre-based events near the user, excluding followed artists
+          // This is more reliable than searching Last.fm similars + TM (rate limits, no shows)
+          const genrePromises = genreSlugs.slice(0, 3).map(genre =>
+            getUpcomingByGenre(genre, userLatLong, userRadius, 15, null)
+              .catch(() => ({ genre, count: 0, events: [] as Event[] }))
           );
-
-          // Merge results, deduplicate by artist name (keep highest eventCount)
-          const bestByArtist = new Map<string, DiscoverArtistWithConcerts>();
-          for (const result of seedResults) {
-            if (result.status !== 'fulfilled') continue;
-            for (const artist of result.value) {
-              const key = artist.artistName.toLowerCase();
-              const existing = bestByArtist.get(key);
-              if (!existing || artist.eventCount > existing.eventCount) {
-                bestByArtist.set(key, artist);
-              }
+          const genreResults = await Promise.allSettled(genrePromises);
+          
+          // Collect all genre events
+          const allEvents: Event[] = [];
+          for (const settled of genreResults) {
+            if (settled.status !== 'fulfilled') continue;
+            allEvents.push(...settled.value.events);
+          }
+          
+          // Remove duplicates by event ID
+          const uniqueEvents = new Map<string, Event>();
+          for (const evt of allEvents) {
+            if (!uniqueEvents.has(evt.id)) {
+              uniqueEvents.set(evt.id, evt);
+            }
+          }
+          
+          // Group by artist, excluding followed artists
+          const artistMap = new Map<string, DiscoverArtistWithConcerts>();
+          for (const evt of uniqueEvents.values()) {
+            if (!evt.artistName) continue;
+            // Skip artists the user already follows
+            if (allFollowedNames.includes(evt.artistName)) continue;
+            
+            const existing = artistMap.get(evt.artistName);
+            if (existing) {
+              existing.events.push(evt);
+              existing.eventCount = existing.events.length;
+            } else {
+              artistMap.set(evt.artistName, {
+                id: `discover-${evt.artistName}`,
+                name: evt.artistName,
+                artistName: evt.artistName,
+                image: evt.image,
+                match: 0,
+                source: evt.source || 'discover',
+                genre: evt.genre,
+                events: [evt],
+                eventCount: 1,
+                url: evt.url,
+              });
             }
           }
 
-          const discoverResult = Array.from(bestByArtist.values())
+          const discoverResult = Array.from(artistMap.values())
             .sort((a, b) => b.eventCount - a.eventCount)
             .slice(0, 8);
 
@@ -298,18 +313,50 @@ export function useRecommendations(): UseRecommendationsReturn {
 
       const fetchConcerts = async () => {
         try {
-          // Recommended Concerts: near the user, similar to their followed artists
-          // Send ALL followed artists (backend picks top seeds and finds similar artists with concerts near user)
-          const concertsResponse = await getConcertRecommendations(
-            seedName || 'unknown',  // Legacy fallback; backend uses followedArtists if provided
-            undefined,
-            userLatLong,
-            userRadius,
-            genreSlugs,
-            allFollowedNames  // All followed artists as seeds — backend decides similarity logic
-          )
-
-          const recommendedEvents = concertsResponse?.events || []
+          // Recommended Concerts: merge seed-based events + genre events for variety
+          const allEvents: Event[] = [];
+          
+          // 1. Seed-based recommendations (similar to followed artists)
+          try {
+            const concertsResponse = await getConcertRecommendations(
+              seedName || 'unknown',
+              undefined,
+              userLatLong,
+              userRadius,
+              genreSlugs,
+              allFollowedNames
+            )
+            if (concertsResponse?.events) {
+              allEvents.push(...concertsResponse.events)
+            }
+          } catch (e) {
+            console.warn('Seed-based concerts failed:', e)
+          }
+          
+          // 2. Genre-based events as supplement
+          try {
+            const genrePromises = genreSlugs.slice(0, 3).map(genre =>
+              getUpcomingByGenre(genre, userLatLong, userRadius, 10, null)
+                .catch(() => ({ genre, count: 0, events: [] as Event[] }))
+            )
+            const genreResults = await Promise.allSettled(genrePromises)
+            for (const settled of genreResults) {
+              if (settled.status !== 'fulfilled') continue
+              allEvents.push(...settled.value.events)
+            }
+          } catch (e) {
+            console.warn('Genre concerts failed:', e)
+          }
+          
+          // Deduplicate by artist name
+          const uniqueEvents = new Map<string, Event>()
+          for (const evt of allEvents) {
+            const key = (evt.artistName || evt.name || '').toLowerCase()
+            if (!key || uniqueEvents.has(key)) continue
+            uniqueEvents.set(key, evt)
+          }
+          
+          const recommendedEvents = Array.from(uniqueEvents.values())
 
           if (mountedRef.current) {
             setRecommendedEvents(recommendedEvents)

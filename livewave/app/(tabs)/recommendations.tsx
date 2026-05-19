@@ -113,16 +113,12 @@ export default function RecommendationsScreen() {
         )}
         <Text style={styles.discoverName} numberOfLines={1}>{item.artistName}</Text>
         <View style={styles.discoverMeta}>
-          {/* Show genre badge for genre-based results, match score for Last.fm results */}
-          {item.match === 0 && item.genre ? (
-            <View style={[styles.matchBadge, { backgroundColor: '#666' }]}>
-              <Text style={styles.matchBadgeText}>{item.genre}</Text>
-            </View>
-          ) : item.match > 0 ? (
+          {/* Only show match score when we have real similarity data from Last.fm */}
+          {item.match > 0 && (
             <View style={styles.matchBadge}>
               <Text style={styles.matchBadgeText}>{(item.match * 100).toFixed(0)}% match</Text>
             </View>
-          ) : null}
+          )}
         </View>
         {item.eventCount > 0 && (
           <Text style={styles.discoverEvents} numberOfLines={1}>

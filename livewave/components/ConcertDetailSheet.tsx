@@ -178,7 +178,11 @@ export default function ConcertDetailSheet({
           <View style={styles.infoSection}>
             <Text style={styles.artistName}>{artistName}</Text>
             
-            <Text style={styles.subtitle}>World tour 2025</Text>
+            {firstEvent.date && (
+              <Text style={styles.subtitle}>
+                {new Date(firstEvent.date).getFullYear()} Tour
+              </Text>
+            )}
             
             {firstEvent.city && (
               <View style={styles.locationRow}>
