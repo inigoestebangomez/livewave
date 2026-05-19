@@ -8,7 +8,8 @@
         "artistas": ["Muse", "Olivia Rodrigo", "Sabrina Carpenter", "Benson Boone", "Nothing But Thieves", "Aurora", "Jamie xx", "The Last Dinner Party", "Blossoms"]
       },
       { "nombre": "Sónar Festival", "ubicacion": "Barcelona", "generos": ["Electrónica", "Arte Digital"], "promotor": "Advanced Music S.L.", "entradas": "https://sonar.es",
-        "artistas": ["Aphex Twin", "Arca", "Four Tet", "Floating Points", "Jon Hopkins", "Objekt", "Skrillex"]
+        "artistas": ["Aphex Twin", "Arca", "Four Tet", "Floating Points", "Jon Hopkins", "Objekt", "Skrillex"],
+        "fecha": "2025-06-12"
       },
       { "nombre": "Bilbao BBK Live", "ubicacion": "Bilbao", "generos": ["Indie", "Rock", "Alternativo"], "promotor": "Last Tour", "entradas": "https://bilbaobbklive.com",
         "artistas": ["Massive Attack", "Fontaines D.C.", "Jungle", "Peggy Gou", "Two Door Cinema Club", "Confidence Man", "Everything Everything"]
@@ -38,7 +39,51 @@
       },
       { "nombre": "Leyendas del Rock", "ubicacion": "Villena", "generos": ["Heavy Metal", "Hard Rock"], "promotor": "Sufriendo & Gozando", "entradas": "https://www.leyendasdelrockfestival.com" },
       { "nombre": "Tomavistas", "ubicacion": "Madrid", "generos": ["Indie", "Alternativo"], "promotor": "Tomavistas", "entradas": "https://www.tomavistasfestival.com" },
-      { "nombre": "Río Babel", "ubicacion": "Madrid", "generos": ["Iberoamericana", "Pop", "Urbana"], "promotor": "Sonde3 Producciones", "entradas": "https://festivalriobabel.com" }
+      { "nombre": "Río Babel", "ubicacion": "Madrid", "generos": ["Iberoamericana", "Pop", "Urbana"], "promotor": "Sonde3 Producciones", "entradas": "https://festivalriobabel.com" },
+      { "nombre": "DGTL Barcelona", "ubicacion": "Barcelona", "generos": ["Techno", "House", "Electrónica"], "promotor": "DGTL", "entradas": "https://www.dgtl.nl/barcelona",
+        "artistas": ["Charlotte de Witte", "Amelie Lens", "Adam Beyer", "Nina Kraviz", "Richie Hawtin", "Maceo Plex", "Adriatique", "ANNA", "Marcel Dettmann", "Ben Klock"],
+        "fecha": "2025-08-23"
+      },
+      { "nombre": "Brunch in the Park", "ubicacion": "Barcelona", "generos": ["Electrónica", "House", "Techno"], "promotor": "Brunch", "entradas": "https://brunch-in.com/barcelona",
+        "artistas": ["Disclosure", "Bonobo", "Floating Points", "Four Tet", "Bicep", "Peggy Gou", "The Blessed Madonna", "Honey Dijon", "Carl Cox", "Moodymann"],
+        "fecha": "2025-08-07"
+      },
+      { "nombre": "A Summer Story", "ubicacion": "Madrid", "generos": ["EDM", "Electrónica", "Pop"], "promotor": "Diverse", "entradas": "https://asummerstory.com",
+        "artistas": ["Martin Garrix", "Tiësto", "Dimitri Vegas & Like Mike", "Armin van Buuren", "Hardwell", "Afrojack", "Steve Aoki", "Nicky Romero", "W&W", "Alok"]
+      },
+      { "nombre": "Weekend Beach Festival", "ubicacion": "Benidorm", "generos": ["Pop", "Urbana", "Electrónica"], "promotor": "The Music Republic", "entradas": "https://weekendbeach.es",
+        "artistas": ["Bad Gyal", "Tokischa", "Lola Indigo", "Ana Mena", "Belinda", "María Becerra", "Nathy Peluso", "Becky G", "Danna Paola"]
+      },
+      { "nombre": "Festival de les Arts", "ubicacion": "Valencia", "generos": ["Indie", "Electrónica", "Alternativo"], "promotor": "La Casa del Volcán", "entradas": "https://festivaldelesarts.com",
+        "artistas": ["The National", "Beach House", "Tame Impala", "Unknown Mortal Orchestra", "Khruangbin", "Slowdive", "Yo La Tengo", "Japanese Breakfast"]
+      },
+      { "nombre": "Pirata Rock Festival", "ubicacion": "Gandía", "generos": ["Punk", "Rock", "Ska"], "promotor": "Pirata", "entradas": "https://piratarockfestival.com",
+        "artistas": ["Bad Religion", "Pennywise", "Lagwagon", "NOFX", "Millencolin", "The Bouncing Souls", "Me First and the Gimme Gimmes", "Rancid"]
+      },
+      { "nombre": "Granadata", "ubicacion": "Granada", "generos": ["Techno", "Electrónica", "Underground"], "promotor": "Granadata", "entradas": "https://granadata.com",
+        "artistas": ["Nina Kraviz", "Richie Hawtin", "Charlotte de Witte", "Amelie Lens", "Jeff Mills", "Robert Hood", "Function", "DJ Stingray"]
+      },
+      { "nombre": "Embassa't", "ubicacion": "Barcelona", "generos": ["Techno", "Industrial", "Electrónica"], "promotor": "La Real Producciones", "entradas": "https://embassat.com",
+        "artistas": ["Ben Klock", "Marcel Dettmann", "DVS1", "Surgeon", "Regis", "Shifted", "Blawan", "Answer Code Request"]
+      },
+      { "nombre": "Nits del Fòrum", "ubicacion": "Barcelona", "generos": ["Electrónica", "House", "Techno"], "promotor": "Brunch", "entradas": "https://nitsdelforum.com",
+        "artistas": ["Peggy Gou", "The Blessed Madonna", "Honey Dijon", "Carl Cox", "Paul Kalkbrenner", "Seth Troxler", "Jamie Jones", "Patrick Topping"]
+      },
+      { "nombre": "Polifonik Sound", "ubicacion": "Huesca", "generos": ["Indie", "Rock", "Alternativo"], "promotor": "Polifonik", "entradas": "https://polifoniksound.com",
+        "artistas": ["Love of Lesbian", "Viva Suecia", "La Habitación Roja", "Carolina Durante", "Toundra", "Berri Txarrak", "Morgan", "Miss Caffeina"]
+      },
+      { "nombre": "Nocturama", "ubicacion": "Sevilla", "generos": ["Indie", "Pop", "Rock"], "promotor": "Nocturama", "entradas": "https://nocturama.es",
+        "artistas": ["Dorian", "Sidonie", "Miss Caffeina", "Love of Lesbian", "La Casa Azul", "Anni B Sweet", "Najwa", "Lori Meyers"]
+      },
+      { "nombre": "Kalikenyo Rock", "ubicacion": "Madrid", "generos": ["Rock urbano", "Hard Rock", "Rock"], "promotor": "Kalikenyo", "entradas": "https://kalikenyorock.com",
+        "artistas": ["Marea", "Extremoduro", "Fito & Fitipaldis", "Loquillo", "Burning", "Barón Rojo", "Leño", "Platero y Tú"]
+      },
+      { "nombre": "Tsunami Xixón", "ubicacion": "Gijón", "generos": ["Ska", "Reggae", "Punk"], "promotor": "Tsunami", "entradas": "https://tsunamixixon.com",
+        "artistas": ["Ska-P", "Boikot", "La Raíz", "Aspencat", "Obrint Pas", "Pirat's Sound Sistema", "La Pegatina", "Che Sudaka"]
+      },
+      { "nombre": "Interstellar", "ubicacion": "Madrid", "generos": ["Techno", "House", "Electrónica"], "promotor": "Interstellar", "entradas": "https://interstellarfestival.com",
+        "artistas": ["Tale of Us", "Maceo Plex", "Adriatique", "Stephan Bodzin", "Mind Against", "Innellea", "Mathame", "Fideles"]
+      }
     ],
     "UK": [
       { "nombre": "Glastonbury Festival", "ubicacion": "Pilton", "generos": ["Multigénero"], "promotor": "Glastonbury Festivals", "entradas": "https://glastonbury.seetickets.com" },

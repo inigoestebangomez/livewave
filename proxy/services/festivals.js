@@ -282,6 +282,7 @@ async function scrapeAllFestivals() {
         city: fest.ubicacion,
         country: fest.pais,
         ticketUrl: fest.entradas,
+        date: fest.fecha || null, // Include manual date from JSON if available
       }));
     });
 
@@ -380,6 +381,7 @@ export const FestivalService = {
       source: 'festival',
       url: a.ticketUrl,
       images: [],
+      date: a.date, // Include festival date if available
       classifications: [{
         genre: { name: a.genres[0] || 'Music' }
       }],

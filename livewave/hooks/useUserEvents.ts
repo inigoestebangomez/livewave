@@ -43,10 +43,10 @@ export function useUserEvents(options: UseUserEventsOptions = {}): UseUserEvents
         return
       }
 
-      let query = supabase
-        .from('events')
-        .select('id, date, venue, city, country, external_url, artist_id, artist:artist_id(name, image_url)')
-        .in('id', eventIds)
+       let query = supabase
+         .from('events')
+         .select('id, date, venue, city, country, external_url, source, url, artist_id, artist:artist_id(name, image_url)')
+         .in('id', eventIds)
 
       if (futureOnly) {
         const today = new Date().toISOString().split('T')[0]

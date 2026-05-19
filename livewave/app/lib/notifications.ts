@@ -56,8 +56,7 @@ export async function registerForPushNotificationsAsync() {
     })).data;
   } catch (e) {
     console.log('Error getting token:', e);
-    // Alert.alert('Error getting token', `${e}`);
-    token = `${e}`;
+    token = null;
   }
 
   return token;

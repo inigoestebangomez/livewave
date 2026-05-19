@@ -120,22 +120,33 @@ export async function searchSpotifyArtists(query: string, offset: number = 0): P
   }
 }
 
-export async function getConcertRecommendations(seedArtistName: string, city?: string, latlong?: string, radius?: number, genres?: string[]): Promise<{ seed: string, events: Event[], sources?: { ticketmaster: number, festival: number } }> {
+export async function getConcertRecommendations(
+  seedArtistName: string,
+  city?: string,
+  latlong?: string,
+  radius?: number,
+  genres?: string[],
+  followedArtists?: string[]
+): Promise<{ seed: string, events: Event[], sources?: { ticketmaster: number, festival: number } }> {
     try {
-        const params = new URLSearchParams({
-            seed_artist_name: seedArtistName
-        })
+        const params = new URLSearchParams()
+        // Prefer followed_artists for the new endpoint logic; fall back to seed
+        if (followedArtists && followedArtists.length > 0) {
+            params.append('followed_artists', followedArtists.join(','))
+        } else {
+            params.append('seed_artist_name', seedArtistName)
+        }
         if (city) params.append('city', city)
         if (latlong) params.append('latlong', latlong)
         if (radius) params.append('radius', String(radius)) 
-        else params.append('radius', '50')
+        else params.append('radius', '120')
         if (genres && genres.length > 0) params.append('genres', genres.join(','))
         
         const url = `${API_URL}/recommendations/concerts?${params.toString()}`
-        console.log(`📡 [API] Fetching Recs: ${url}`)
+        console.log(`📡 [API] Fetching Recs: followed=${followedArtists?.length || 0} artists, radius=${radius || 120}km`)
         const res = await fetch(url)
         if (!res.ok) {
-            console.warn(`TM Recs failed for ${seedArtistName}: ${res.status}`)
+            console.warn(`TM Recs failed: ${res.status}`)
             return { seed: seedArtistName, events: [] }
         }
         const data = await res.json()
@@ -161,6 +172,7 @@ export async function getConcertRecommendations(seedArtistName: string, city?: s
         return { seed: seedArtistName, events: [] }
     }
 }
+
 
 export async function getDiscoverArtists(genres: string[], latlong?: string, radius?: number): Promise<DiscoverArtist[]> {
   try {
@@ -251,7 +263,8 @@ export async function getDiscoverWithConcerts(
   radius?: number,
   limit?: number,
   genres?: string[],
-  countryCode?: string | null
+  countryCode?: string | null,
+  excludeArtists?: string[]
 ): Promise<DiscoverArtistWithConcerts[]> {
   try {
     const params = new URLSearchParams({
@@ -262,9 +275,10 @@ export async function getDiscoverWithConcerts(
     if (limit) params.append('limit', String(limit))
     if (genres && genres.length > 0) params.append('genres', genres.join(','))
     if (countryCode) params.append('countryCode', countryCode)
+    if (excludeArtists && excludeArtists.length > 0) params.append('excludeArtists', excludeArtists.join(','))
 
     const url = `${API_URL}/recommendations/discover-with-concerts?${params.toString()}`
-    console.log(`🎵 [API] Discover With Concerts: seed=${seedArtistName}, genres=${genres?.join(',') || 'none'}`)
+    console.log(`🎵 [API] Discover With Concerts: seed=${seedArtistName}, exclude=${excludeArtists?.length || 0} artists`)
 
     const response = await fetch(url)
     if (!response.ok) {
@@ -279,6 +293,7 @@ export async function getDiscoverWithConcerts(
     return []
   }
 }
+
 
 /**
  * Obtiene conciertos próximos por género (búsqueda por clasificación en Ticketmaster)

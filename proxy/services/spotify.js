@@ -62,10 +62,18 @@ export const SpotifyService = {
         }));
       });
     } catch (err) {
-      console.error('❌ Spotify Search Error:', err.message);
-      if (err.statusCode === 403) {
-          console.error('   -> 403 Forbidden. Check Spotify Dashboard > Settings > User Management.');
-      }
+      // Defensive logging — some errors have no .message and JSON.stringify gives [object Object]
+      const errInfo = {
+        type: typeof err,
+        message: err?.message,
+        statusCode: err?.statusCode,
+        status: err?.status,
+        body: err?.body,
+        code: err?.code,
+        keys: err && typeof err === 'object' ? Object.keys(err) : null,
+        stringified: err ? err.toString() : 'null'
+      };
+      console.error('❌ Spotify Search Error:', JSON.stringify(errInfo));
       return [];
     }
   },
@@ -175,25 +183,39 @@ export const SpotifyService = {
      }
   },
 
-  // Get related artists
+  // Get related artists using MANUAL fetch (works with Client Credentials)
+  // The library method spotifyApi.getArtistRelatedArtists() returns 403 with Client Credentials
   getRelatedArtists: async (seedArtistId) => {
     try {
       return await executeWithRetry(async () => {
-        const data = await spotifyApi.getArtistRelatedArtists(seedArtistId);
-        console.log(`🔍 [Spotify] Related for ${seedArtistId}:`, data.body ? (data.body.artists ? `${data.body.artists.length} found` : 'No artists property') : 'No body');
-        if (!data.body || !data.body.artists) return [];
+        const token = spotifyApi.getAccessToken();
+        const url = `https://api.spotify.com/v1/artists/${seedArtistId}/related-artists`;
         
-        return data.body.artists.slice(0, 10).map(artist => ({
+        const response = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`❌ Spotify Related Artists Error (${response.status}): ${errorText}`);
+          throw new Error(`Spotify API Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const artists = data.artists || [];
+        console.log(`🔍 [Spotify] Related for ${seedArtistId}: ${artists.length} found`);
+        
+        return artists.slice(0, 10).map(artist => ({
             id: artist.id,
             name: artist.name,
-            image: artist.images[0]?.url,
+            image: artist.images?.[0]?.url,
             genres: artist.genres,
             popularity: artist.popularity,
-            external_url: artist.external_urls.spotify
+            external_url: artist.external_urls?.spotify
         }));
       });
     } catch (err) {
-      console.error('Spotify Related Artists Error:', err);
+      console.error('Spotify Related Artists Error:', err.message);
       return [];
     }
   }

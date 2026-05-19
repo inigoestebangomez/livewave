@@ -130,14 +130,14 @@ export function useSearchArtist(): UseSearchArtistReturn {
     externalUrl: string,
     userId: string
   ) => {
-    const { data: newEvent, error: eventError } = await supabase
-      .from('events')
-      .upsert(
-        { artist_id: artist.id, city, country, venue, date, external_url: externalUrl },
-        { onConflict: 'artist_id,date,venue' }
-      )
-      .select()
-      .single()
+     const { data: newEvent, error: eventError } = await supabase
+       .from('events')
+       .upsert(
+         { artist_id: artist.id, city, country, venue, date, external_url: externalUrl, source: 'ticketmaster', url: externalUrl },
+         { onConflict: 'artist_id,date,venue' }
+       )
+       .select()
+       .single()
 
     if (eventError) {
       console.error('Error inserting event:', eventError)

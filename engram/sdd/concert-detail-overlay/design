@@ -1,0 +1,505 @@
+# Technical Design: Concert Detail Overlay
+
+## 1. Component Architecture
+
+### ConcertDetailSheet Component Structure
+
+```tsx
+interface ConcertDetailSheetProps {
+  event: EventWithArtist & { source?: string; url?: string };
+  onDismiss: () => void;
+}
+
+export default function ConcertDetailSheet({ event, onDismiss }: ConcertDetailSheetProps) {
+  const snapPoints = ['25%', '90%']; // Initial snap at 25%, final at 90%
+  
+  return (
+    <BottomSheetModal 
+      snapPoints={snapPoints}
+      handleIndicatorStyle={{ backgroundColor: 'rgba(255,255,255,0.3)' }}
+      handleStyle={{ height: 5, borderRadius: 2.5 }}
+      backdropBackgroundColor="rgba(0,0,0,0.5)"
+      onClose={onDismiss}
+    >
+      <View style={styles.sheetContent}>
+        {/* Header Component */}
+        <ConcertDetailHeader 
+          event={event} 
+          onDismiss={onDismiss} 
+          onOverflowPress={handleOverflowPress} 
+        />
+        
+        {/* Content Layout */}
+        <ScrollView contentContainerStyle={styles.contentContainer}>
+          {/* Artist Photo */}
+          <Image 
+            source={{ uri: event.artist?.image_url || DEFAULT_IMAGE }}
+            style={styles.artistPhoto}
+            resizeMode="cover"
+          />
+          
+          {/* Date Card */}
+          <View style={styles.dateCard}>
+            <Text style={styles.dateText}>
+              {formatDate(event.date)}
+            </Text>
+            <Text style={styles.locationText}>
+              {event.venue}, {event.city}
+            </Text>
+          </View>
+          
+          {/* Event Info */}
+          <View style={styles.infoSection}>
+            <Text style={styles.title}>{event.artist?.name}</Text>
+            <Text style={styles.details}>
+              {formatDateLong(event.date)} • {event.city}
+            </Text>
+          </View>
+          
+          {/* Action Button */}
+          <TouchableOpacity 
+            style={styles.actionButton}
+            disabled={!event.url}
+            onPress={handleUrlPress}
+          >
+            <Text style={styles.actionButtonText}>
+              {event.url ? 'Ver Entradas' : 'Sin enlace'}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </BottomSheetModal>
+  );
+}
+```
+
+### Props Interface
+- `event`: Extended EventWithArtist type including optional `source` and `url` fields
+- `onDismiss`: Callback to close the bottom sheet
+
+### Integration with @gorhom/bottom-sheet
+- Uses `BottomSheetModal` component with snap points at 25% (initial) and 90% (final)
+- Custom handle indicator styling to match dark theme (white with 30% opacity)
+- Backdrop with semi-transparent black background for modal effect
+- `onClose` prop connected to dismiss handler
+
+### Header Component Structure
+```tsx
+interface ConcertDetailHeaderProps {
+  event: EventWithArtist & { source?: string; url?: string };
+  onDismiss: () => void;
+  onOverflowPress: () => void;
+}
+
+function ConcertDetailHeader({ event, onDismiss, onOverflowPress }) {
+  return (
+    <View style={styles.header}>
+      {/* Back Button */}
+      <TouchableOpacity 
+        style={styles.backButton}
+        onPress={onDismiss}
+      >
+        <Ionicons name="chevron-back-outline" size={24} color="white" />
+      </TouchableOpacity>
+      
+      {/* Title */}
+      <Text style={styles.headerTitle}>{event.artist?.name}</Text>
+      
+      {/* Overflow Menu */}
+      <TouchableOpacity 
+        style={styles.overflowButton}
+        onPress={onOverflowPress}
+      >
+        <Ionicons name="ellipsis-vertical-outline" size={24} color="white" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+```
+
+### Content Layout
+- **Artist Photo**: Full-width image with aspect ratio 1:1, fallback to placeholder
+- **Date Card**: Styled container with date and location information
+- **Event Info**: Artist name and formatted date/location
+- **Action Button**: Primary CTA button that opens URL or shows disabled state
+
+## 2. Integration Points
+
+### BottomSheetModalProvider Placement
+The `BottomSheetModalProvider` will be wrapped around the tab navigator in `app/(tabs)/_layout.tsx` to ensure it's available across all tabs while maintaining proper z-index ordering:
+
+```tsx
+// app/(tabs)/_layout.tsx
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+
+export default function TabsLayout() {
+  return (
+    <BottomSheetModalProvider>
+      {/* Tab navigator content */}
+    </BottomSheetModalProvider>
+  );
+}
+```
+
+### Home-to-Sheet Data Flow
+1. Home screen concert cards receive `onPress` handlers
+2. On press, Home sets state for selected concert and opens sheet
+3. Sheet receives concert data via props and manages its own presentation state
+
+```tsx
+// In Home component
+const [selectedEvent, setSelectedEvent] = useState<EventWithArtist | null>(null);
+const [sheetVisible, setSheetVisible] = useState(false);
+
+// Press handler
+const handleEventPress = (event: EventWithArtist) => {
+  setSelectedEvent(event);
+  setSheetVisible(true);
+};
+
+// Render
+{selectedEvent && sheetVisible && (
+  <ConcertDetailSheet 
+    event={selectedEvent} 
+    onDismiss={() => {
+      setSelectedEvent(null);
+      setSheetVisible(false);
+    }}
+  />
+)}
+```
+
+### Presentation/Dismissal Mechanism
+- Imperative control via state (`sheetVisible` and `selectedEvent`)
+- Backdrop touch and downward swipe dismiss via BottomSheetModal's `onClose`
+- Header back button provides explicit dismiss action
+
+## 3. Data Flow
+
+### Supabase Schema Changes
+```sql
+ALTER TABLE events 
+ADD COLUMN IF NOT EXISTS source TEXT,
+ADD COLUMN IF NOT EXISTS url TEXT;
+```
+
+### Save Flow Modification
+File to modify: `lib/api.ts` (or wherever event saving occurs)
+Current save function needs enhancement to capture proxy data:
+
+```typescript
+// Before saving event from proxy data
+const saveEventFromProxy = async (proxyEvent: ProxyEvent) => {
+  const eventData = {
+    artist_id: proxyEvent.artistId,
+    date: proxyEvent.date,
+    venue: proxyEvent.venue,
+    city: proxyEvent.city,
+    country: proxyEvent.country,
+    external_url: proxyEvent.externalUrl,
+    // NEW FIELDS:
+    source: proxyEvent.source, // 'ticketmaster' | 'festival' | 'spotify'
+    url: proxyEvent.url // Direct ticket/purchase URL
+  };
+  
+  await supabase.from('events').insert([eventData]);
+};
+```
+
+### Read Flow Updates
+Update `types/supabase.ts`:
+```typescript
+export interface EventRow {
+  id: string;
+  artist_id: string;
+  date: string;
+  venue: string;
+  city: string;
+  country: string;
+  external_url: string | null;
+  source: string | null; // NEW
+  url: string | null;    // NEW
+}
+
+export interface EventWithArtist extends EventRow {
+  artist: Pick<ArtistRow, 'name' | 'image_url'>;
+}
+```
+
+Update `hooks/useUserEvents.ts` to include new fields in select:
+```typescript
+// Line 48: Add source and url to select
+.select('id, date, venue, city, country, external_url, source, url, artist_id, artist:artist_id(name, image_url)')
+```
+
+## 4. Overflow Menu Implementation
+
+### Cross-Platform Solution
+Use `react-native-action-sheet` for consistent behavior across platforms:
+- iOS: Maps to native ActionSheetIOS
+- Android: Shows material design dropdown menu
+- Web: Falls back to modal dialog
+
+```tsx
+import ActionSheet from 'react-native-action-sheet';
+
+const handleOverflowPress = () => {
+  ActionSheet.showActionSheetWithOptions(
+    {
+      options: ['Compartir', 'Eliminar', 'Cancelar'],
+      destructiveButtonIndex: 1, // Delete is destructive
+      cancelButtonIndex: 2,
+      title: 'Más opciones'
+    },
+    async (buttonIndex) => {
+      switch (buttonIndex) {
+        case 0: // Share
+          await handleShare();
+          break;
+        case 1: // Delete
+          await handleDelete();
+          break;
+        case 2: // Cancel
+          break;
+      }
+    }
+  );
+};
+```
+
+### Delete Flow
+```typescript
+const handleDelete = async () => {
+  // Confirmation dialog
+  const confirmed = await Alert.alert(
+    'Eliminar concierto',
+    '¿Estás seguro de que quieres eliminar este concierto de tus guardados?',
+    [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar', style: 'destructive', onPress: async () => {
+        try {
+          await supabase
+            .from('events')
+            .delete()
+            .eq('id', event.id);
+            
+          // Refresh events
+          await refreshEvents();
+          
+          Toast.show({
+            type: 'success',
+            text1: 'Concierto eliminado',
+            text2: 'El concierto ha sido eliminado de tus guardados'
+          });
+        } catch (error) {
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'No se pudo eliminar el concierto'
+          });
+        }
+      }}
+    ]
+  );
+};
+```
+
+### Share Flow
+```typescript
+import * as Share from 'react-native-share';
+
+const handleShare = async () => {
+  try {
+    const shareOptions = {
+      title: `¡Mira este concierto!`,
+      message: `Te recomiendo ver a ${event.artist?.name} en ${event.venue} el ${formatDate(event.date)}.`,
+      url: event.url || undefined // Only include if available
+    };
+    
+    await Share.open(shareOptions);
+  } catch (error) {
+    console.error('Share failed:', error);
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: 'No se pudo compartir el concierto'
+    });
+  }
+};
+```
+
+## 5. Styling Spec
+
+### Bottom Sheet Styling
+```typescript
+const styles = StyleSheet.create({
+  sheetContent: {
+    flex: 1,
+    backgroundColor: '#000', // Dark theme background
+    paddingTop: 20, // Space for handle
+  },
+  
+  // Handle styling
+  handleIndicator: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  handle: {
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  
+  // Header
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  backButton: {
+    padding: 10,
+  },
+  headerTitle: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  overflowButton: {
+    padding: 10,
+  },
+  
+  // Content
+  contentContainer: {
+    padding: 20,
+    flexGrow: 1,
+  },
+  
+  // Artist Photo
+  artistPhoto: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 20,
+    marginBottom: 24,
+  },
+  
+  // Date Card
+  dateCard: {
+    backgroundColor: 'rgba(30,30,30,0.4)',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  dateText: {
+    color: '#b10404', // Brand red
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  locationText: {
+    color: '#ccc',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  
+  // Info Section
+  infoSection: {
+    marginBottom: 24,
+  },
+  title: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  details: {
+    color: '#aaa',
+    fontSize: 16,
+  },
+  
+  // Action Button
+  actionButton: {
+    backgroundColor: '#b10404',
+    borderRadius: 50,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.8, // Disabled state opacity
+  },
+  actionButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+});
+```
+
+### Image Dimensions
+- Artist photo: Full width of screen, aspect ratio 1:1 (square)
+- Minimum height: 200px, maximum height: 350px (responsive)
+- Border radius: 20px to match app's rounded design language
+
+### Date Card Styling
+- Background: `rgba(30,30,30,0.4)` (consistent with event cards)
+- Border radius: 16px
+- Padding: 16px
+- Date text: Brand red (`#b10404`), 22px, bold
+- Location text: Light gray (`#ccc`), 14px
+
+### Action Button
+- Background: Brand red (`#b10404`)
+- Border radius: 50px (pill shape)
+- Vertical padding: 16px
+- Disabled opacity: 0.8
+- Text: White, 18px, 600 weight
+
+## 6. Edge Cases
+
+### Missing Image Handling
+```tsx
+<Image 
+  source={{
+    uri: event.artist?.image_url || 'https://via.placeholder.com/400x400?text=Sin+imagen',
+  }}
+  style={styles.artistPhoto}
+/>
+```
+- Fallback to placeholder service when `image_url` is null/undefined
+- Placeholder shows "Sin imagen" text on gray background
+
+### Missing URL Handling
+```tsx
+<TouchableOpacity 
+  style={[styles.actionButton, !event.url && styles.disabledButton]}
+  disabled={!event.url}
+  onPress={event.url ? handleUrlPress : undefined}
+>
+  <Text style={styles.actionButtonText}>
+    {event.url ? 'Ver Entradas' : 'Sin enlace'}
+  </Text>
+</TouchableOpacity>
+```
+- Button visually dimmed when no URL available
+- Press handler only attached when URL exists
+- Text changes to indicate lack of link
+
+### Legacy Events Without Source/URL
+- Database migration allows NULL values for new columns
+- Existing events will have `null` for `source` and `url`
+- UI gracefully handles null values:
+  - Source field not displayed in UI (used internally for analytics)
+  - URL absence handled as described above
+  - No breaking changes to existing functionality
+
+### Platform-Specific Considerations
+- **iOS**: Bottom sheet handle uses native appearance cues
+- **Android**: Handle follows material design guidelines
+- **Overflow menu**: Uses platform-appropriate presentation via `react-native-action-sheet`
+- **Share API**: Uses `react-native-share` which handles platform differences internally
+
+### Error Boundaries
+- Network errors during delete/share operations show toast notifications
+- Invalid URLs are handled by Share API/linking library
+- Missing artist data falls back to "Artista desconocido" and placeholder images

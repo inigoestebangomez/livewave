@@ -103,7 +103,7 @@ export default function RecommendationsScreen() {
 
   // Render card for discover artists (similar with concerts)
   const renderDiscoverCard = ({ item }: { item: DiscoverArtistWithConcerts }) => (
-    <TouchableOpacity style={styles.discoverCard} onPress={() => openLink(item.url)}>
+    <TouchableOpacity style={styles.discoverCard} onPress={() => handleArtistPress(item.events)}>
         {item.image ? (
           <Image source={{ uri: item.image }} style={styles.discoverImage} />
         ) : (
@@ -113,9 +113,16 @@ export default function RecommendationsScreen() {
         )}
         <Text style={styles.discoverName} numberOfLines={1}>{item.artistName}</Text>
         <View style={styles.discoverMeta}>
-          <View style={styles.matchBadge}>
-            <Text style={styles.matchBadgeText}>{(item.match * 100).toFixed(0)}% match</Text>
-          </View>
+          {/* Show genre badge for genre-based results, match score for Last.fm results */}
+          {item.match === 0 && item.genre ? (
+            <View style={[styles.matchBadge, { backgroundColor: '#666' }]}>
+              <Text style={styles.matchBadgeText}>{item.genre}</Text>
+            </View>
+          ) : item.match > 0 ? (
+            <View style={styles.matchBadge}>
+              <Text style={styles.matchBadgeText}>{(item.match * 100).toFixed(0)}% match</Text>
+            </View>
+          ) : null}
         </View>
         {item.eventCount > 0 && (
           <Text style={styles.discoverEvents} numberOfLines={1}>
@@ -143,34 +150,41 @@ export default function RecommendationsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#b10404" />
         }
       >
-        {/* YOUR ARTISTS ON TOUR - Solo artistas seguidos que REALMENTE tienen conciertos */}
-        {(yourArtistsOnTour.length > 0 || artistsOnTourLoading) && (
-            <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                    <Ionicons name="heart" size={18} color="#b10404" />
-                    <View style={{flex: 1}}>
-                        <Text style={styles.sectionTitle}>Your Artists On Tour</Text>
-                        {!artistsOnTourLoading && yourArtistsOnTour.length > 0 && (
-                            <Text style={{color:'#888', fontSize: 11, marginTop: 2}}>
-                                {yourArtistsOnTour.length} of your artists have upcoming shows
-                            </Text>
-                        )}
-                    </View>
+        {/* YOUR ARTISTS ON TOUR - Always show section, empty state when no concerts */}
+        <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+                <Ionicons name="heart" size={18} color="#b10404" />
+                <View style={{flex: 1}}>
+                    <Text style={styles.sectionTitle}>Your Artists On Tour</Text>
+                    {!artistsOnTourLoading && yourArtistsOnTour.length > 0 && (
+                        <Text style={{color:'#888', fontSize: 11, marginTop: 2}}>
+                            {yourArtistsOnTour.length} of your artists have upcoming shows
+                        </Text>
+                    )}
                 </View>
-                {artistsOnTourLoading ? (
-                    <SectionSkeleton count={3} cardWidth={200} cardHeight={140} />
-                ) : (
-                    <FlatList
-                        data={yourArtistsOnTour}
-                        horizontal
-                        renderItem={renderArtistOnTourCard}
-                        keyExtractor={(item) => item.artistName}
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={{ paddingHorizontal: 5 }}
-                    />
-                )}
             </View>
-        )}
+            {artistsOnTourLoading ? (
+                <SectionSkeleton count={3} cardWidth={200} cardHeight={140} />
+            ) : yourArtistsOnTour.length > 0 ? (
+                <FlatList
+                    data={yourArtistsOnTour}
+                    horizontal
+                    renderItem={renderArtistOnTourCard}
+                    keyExtractor={(item) => item.artistName}
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingHorizontal: 5 }}
+                />
+            ) : (
+                <View style={styles.emptySection}>
+                    <Ionicons name="calendar-outline" size={48} color="#444" />
+                    <Text style={styles.emptyTitle}>No Upcoming Shows</Text>
+                    <Text style={styles.emptySubtitle}>
+                        None of your followed artists have announced concerts yet.{'\n'}
+                        Check back later or discover new artists below!
+                    </Text>
+                </View>
+            )}
+        </View>
 
         {/* DISCOVER - Artistas similares que REALMENTE tienen conciertos */}
         {(discoverArtists.length > 0 || discoverLoading) && (
@@ -254,18 +268,6 @@ export default function RecommendationsScreen() {
                  </Text>
             )}
         </View>
-
-        {/* Empty state for followed artists without concerts */}
-        {yourArtistsOnTour.length === 0 && !artistsOnTourLoading && !loading && (
-            <View style={styles.emptySection}>
-                <Ionicons name="calendar-outline" size={48} color="#444" />
-                <Text style={styles.emptyTitle}>No Upcoming Shows</Text>
-                <Text style={styles.emptySubtitle}>
-                    None of your followed artists have announced concerts yet.{'\n'}
-                    Check back later or discover new artists below!
-                </Text>
-            </View>
-        )}
 
       </ScrollView>
       

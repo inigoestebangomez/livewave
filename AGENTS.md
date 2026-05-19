@@ -29,15 +29,19 @@ npm run reset-project  # Resets to blank app directory
 ```
 
 ### Testing
-No test framework is currently configured. When adding tests:
-```bash
-# Install testing deps
-npm install --save-dev jest @types/jest @testing-library/react-native jest-expo
+Jest is configured for both the livewave app and the proxy server.
 
-# Run tests (after setup)
-npx jest
-npx jest path/to/file.test.tsx    # Single test file
-npx jest --watch                  # Watch mode
+#### Livewave (React Native)
+```bash
+npm test              # Run all tests
+npm test -- path/to/file.test.tsx    # Single test file
+npm test -- --watch                  # Watch mode
+```
+
+#### Proxy (Node.js)
+```bash
+cd proxy && npm test                  # Run all proxy tests
+cd proxy && npm test -- --watch       # Watch mode
 ```
 
 ## Project Structure

@@ -28,6 +28,8 @@ export interface EventRow {
   city: string
   country: string
   external_url: string | null
+  source: string | null
+  url: string | null
 }
 
 export interface UserEventRow {

@@ -6,7 +6,8 @@
   "main": "proxy.js",
   "scripts": {
     "start": "node proxy.js",
-    "dev": "nodemon proxy.js"
+    "dev": "nodemon proxy.js",
+    "test": "jest"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.1",
@@ -19,6 +20,18 @@
     "spotify-web-api-node": "^5.0.2"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^29.7.0",
     "nodemon": "^3.0.2"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ],
+    "moduleFileExtensions": [
+      "js",
+      "json"
+    ]
   }
 }

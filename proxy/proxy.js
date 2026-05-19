@@ -28,7 +28,10 @@ const CITY_COORDS = {
     'aranda de duero': [41.67, -3.69], 'vitoria': [42.85, -2.67],
     'almería': [36.84, -2.46], 'huesca': [42.14, -0.41], 'asturias': [43.36, -5.85],
     'benidorm': [38.54, -0.13], 'villena': [38.63, -0.87],
+    'valencia': [39.47, -0.38], 'gandía': [38.97, -0.18], 'granada': [37.18, -3.60],
+    'sevilla': [37.39, -5.98], 'gijón': [43.53, -5.66],
     // UK
+    'isla de wight': [50.69, -1.30],
     'pilton': [51.15, -2.59], 'reading': [51.45, -0.98], 'leeds': [53.80, -1.55],
     'daresbury': [53.35, -2.62], 'donington': [52.83, -1.37], 'winchester': [51.06, -1.31],
     'manchester': [53.48, -2.24], 'cornualles': [50.26, -5.05], 'londres': [51.51, -0.13],
@@ -50,6 +53,45 @@ const getFestivalCoords = (cityStr) => {
 };
 
 dotenv.config()
+
+// In-memory cache for artist images from Last.fm (24h TTL)
+const imageCache = new Map();
+const IMAGE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+async function getArtistImage(artistName) {
+    const key = artistName.toLowerCase();
+    const cached = imageCache.get(key);
+    if (cached && Date.now() - cached.timestamp < IMAGE_CACHE_TTL) {
+        if (cached.url && cached.url.includes('2a96cbd8b46e442fc41c2b86b821562f')) {
+            // Ignore cached grey star, try to fetch again
+        } else {
+            return cached.url;
+        }
+    }
+    
+    try {
+        // Try Spotify first for high-quality images
+        const spotifySearch = await SpotifyService.searchArtists(artistName);
+        if (spotifySearch && spotifySearch.length > 0 && spotifySearch[0].images && spotifySearch[0].images.length > 0) {
+            const imageUrl = spotifySearch[0].images[0].url;
+            imageCache.set(key, { url: imageUrl, timestamp: Date.now() });
+            return imageUrl;
+        }
+
+        // Fallback to Last.fm
+        const artistInfo = await LastfmService.getArtistInfo(artistName);
+        if (artistInfo && artistInfo.image) {
+            if (!artistInfo.image.includes('2a96cbd8b46e442fc41c2b86b821562f')) {
+                imageCache.set(key, { url: artistInfo.image, timestamp: Date.now() });
+                return artistInfo.image;
+            }
+        }
+    } catch (e) {
+        console.warn(`⚠️ Could not fetch image for ${artistName}:`, e.message);
+    }
+    imageCache.set(key, { url: null, timestamp: Date.now() });
+    return null;
+}
 
 // Genre slug → Ticketmaster classification name mapping
 const GENRE_TO_TICKETMASTER = {
@@ -99,137 +141,85 @@ app.use((req, res, next) => {
 // --- TICKETMASTER ENDPOINTS ---
 
 app.get('/recommendations/concerts', async (req, res) => {
-    const { seed_artist_name, city, latlong, radius, genres } = req.query;
-    
-    if (!seed_artist_name) {
-        return res.status(400).json({ error: 'Missing seed_artist_name' });
+    const { seed_artist_name, followed_artists, latlong, radius, genres } = req.query;
+
+    // Accept either followed_artists (preferred) or seed_artist_name (legacy)
+    const artistsParam = followed_artists || seed_artist_name || '';
+    if (!artistsParam) {
+        return res.status(400).json({ error: 'Missing followed_artists or seed_artist_name' });
     }
 
     try {
-        console.log(`🎯 Recs for: ${seed_artist_name} near ${city || latlong}, genres: ${genres || 'none'}`);
-        
-        // ========== STRATEGY 1: Genre-based search (PRIMARY when genres available) ==========
-        // When user has genres, search TM by classification for each genre
-        // This gives genre-relevant concerts near the user
-        const userGenres = genres ? genres.split(',') : [];
-        const genreSearchRadius = parseFloat(radius) || 200;
+        const followedList = artistsParam.split(',').map(a => a.trim()).filter(Boolean);
+        const userGenres = genres ? genres.split(',').map(g => g.trim()).filter(Boolean) : [];
+        const userRadius = parseFloat(radius) || 120;
 
-        const genrePromises = userGenres
-            .slice(0, 3) // Top 3 genres max
-            .map(genre => {
-                const tmGenre = GENRE_TO_TICKETMASTER[genre.toLowerCase().trim()] || genre;
-                // IMPORTANT: For concert recommendations, ALWAYS use latlong+radius, NEVER countryCode
-                // This ensures we only get concerts within user's configured radius
-                return SmartRecommendationsService.getUpcomingByGenre(
-                    tmGenre, latlong, genreSearchRadius, 15, null // Pass null for countryCode
-                ).catch(err => {
-                    console.warn(`Genre search failed for ${genre}:`, err.message);
-                    return [];
-                });
-            });
+        console.log(`🎯 [Recs] Recommended Concerts: ${followedList.length} followed artists, radius ${userRadius}km, genres: ${userGenres.join(',') || 'none'}`);
 
-        // ========== STRATEGY 2: Seed artist-based (SUPPLEMENT) ==========
-        const tmEventsPromise = TicketmasterService.getConcertRecommendations({
-            seedArtistName: seed_artist_name,
-            city,
-            latLong: latlong,
-            radius
-        }).catch(err => {
-            console.warn('TM Recs failed:', err.message);
-            return [];
-        });
-
-        // ========== STRATEGY 3: Festival Engine (genre-filtered) ==========
-        let festivalArtists = userGenres.length > 0
-            ? FestivalService.getDiscoverArtists(userGenres)
-            : [];
-
-        // Filter festival artists by distance using haversine (requires user latlong)
-        if (latlong && festivalArtists.length > 0) {
-            const [userLat, userLng] = latlong.split(',').map(parseFloat);
-            const maxKm = parseFloat(radius) || 200;
-
-            const filtered = festivalArtists.filter(a => {
-                const coords = getFestivalCoords(a.city);
-                if (!coords) return false;
-                const distKm = haversineKm(userLat, userLng, coords[0], coords[1]);
-                return distKm <= maxKm;
-            });
-
-            console.log(`📍 [Recs] Festival filter: ${festivalArtists.length} → ${filtered.length} within ${maxKm}km of [${latlong}]`);
-            festivalArtists = filtered;
-        } else {
-            festivalArtists = [];
+        if (!latlong) {
+            console.warn('⚠️ [Recs] No latlong provided for Recommended Concerts — returning empty');
+            return res.json({ seed: followedList[0] || 'unknown', events: [], sources: { similar: 0, genre: 0, festival: 0 } });
         }
 
-        // ========== Wait for all results in parallel ==========
-        const [tmEvents, ...genreEventArrays] = await Promise.all([
-            tmEventsPromise,
-            ...genrePromises
-        ]);
+        const events = await SmartRecommendationsService.getRecommendedConcertsNearMe(
+            followedList,
+            latlong,
+            userRadius,
+            userGenres,
+            20
+        );
 
-        const genreEvents = genreEventArrays.flat();
+        const uniqueArtistsWithoutImages = [...new Set(events.filter(e => !e.image || e.image.includes('2a96cbd8b46e442fc41c2b86b821562f')).map(e => e.artistName || e.name).filter(Boolean))];
 
-        // Filter out TM noise (passes, tickets, non-artist events)
-        const tmNoiseWords = ['abono', 'abonos', 'entrada', 'entradas', 'camping', 'vip pass', 'parking'];
-        const filteredTmEvents = tmEvents.filter(e => {
-            const name = (e.name || '').toLowerCase();
-            const artistName = (e._embedded?.attractions?.[0]?.name || e.artistName || '').toLowerCase();
-            
-            if (tmNoiseWords.some(w => name.includes(w) || artistName.includes(w))) {
-                return false;
+        // Fetch missing images synchronously (batched to avoid rate limits)
+        if (uniqueArtistsWithoutImages.length > 0) {
+            const artistsToFetch = uniqueArtistsWithoutImages.filter(artistName => {
+                const cached = imageCache.get(artistName.toLowerCase());
+                return !cached || Date.now() - cached.timestamp >= IMAGE_CACHE_TTL;
+            }).slice(0, 15); // limit to 15 to avoid long latency
+
+            // Batch size of 5 for Spotify API with 2s timeout per batch
+            for (let i = 0; i < artistsToFetch.length; i += 5) {
+                const batch = artistsToFetch.slice(i, i + 5);
+                await Promise.allSettled(
+                    batch.map(name =>
+                        Promise.race([
+                            getArtistImage(name),
+                            new Promise((_, reject) =>
+                                setTimeout(() => reject(new Error('Image fetch timeout')), 2000)
+                            )
+                        ])
+                    )
+                );
+                if (i + 5 < artistsToFetch.length) await new Promise(r => setTimeout(r, 200));
             }
-            return true;
-        });
-
-        // Merge: Genre events FIRST (genre-relevant), then seed-based TM, then festivals
-        const genreTagged = genreEvents.map(e => ({ ...e, source: 'genre' }));
-        const tmTagged = filteredTmEvents.map(e => ({ ...e, source: 'ticketmaster' }));
-        const merged = [...genreTagged, ...tmTagged, ...festivalArtists];
-
-        // Deduplicate by artist name (keep first = genre results have priority)
-        const seen = new Set();
-        const deduped = merged.filter(e => {
-            const key = (e._embedded?.attractions?.[0]?.name || e.artistName || e.name || '').toLowerCase();
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        });
-
-        // Enrich festival-sourced events with Spotify artist images
-        const festivalDeduped = deduped.filter(e => e.source === 'festival' && !e.image);
-        if (festivalDeduped.length > 0) {
-            const enrichPromises = festivalDeduped.slice(0, 20).map(async (event) => {
-                try {
-                    const artistName = event.artistName || event.name;
-                    const results = await SpotifyService.searchArtists(artistName);
-                    if (results && results.length > 0) {
-                        const match = results[0];
-                        const searchName = artistName.toLowerCase();
-                        const foundName = (match.name || '').toLowerCase();
-                        if (foundName.includes(searchName.split(' ')[0]) || searchName.includes(foundName.split(' ')[0])) {
-                            event.image = match.images?.[0]?.url || null;
-                        }
-                    }
-                } catch (_) { /* silently skip */ }
-            });
-            await Promise.allSettled(enrichPromises);
         }
+
+        // Apply enriched images
+        const enriched = events.map(e => {
+            if (e.image && !e.image.includes('2a96cbd8b46e442fc41c2b86b821562f')) return e;
+            const cached = imageCache.get((e.artistName || e.name || '').toLowerCase());
+            if (cached && Date.now() - cached.timestamp < IMAGE_CACHE_TTL && cached.url) {
+                return { ...e, image: cached.url };
+            }
+            if (e.image && e.image.includes('2a96cbd8b46e442fc41c2b86b821562f')) {
+                return { ...e, image: null };
+            }
+            return e;
+        });
 
         res.json({
-            seed: seed_artist_name,
-            events: deduped,
-            sources: { 
-                genre: genreEvents.length,
-                ticketmaster: tmTagged.length, 
-                festival: festivalArtists.length 
-            }
+            seed: followedList[0] || 'unknown',
+            events: enriched,
+            sources: { similar: events.length, genre: 0, festival: 0 }
         });
+
     } catch (err) {
         console.error('Recs Error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
+
 
 app.get('/suggest', async (req, res) => {
 // ... existing suggest code ...
@@ -562,11 +552,50 @@ app.get('/recommendations/your-artists-on-tour', async (req, res) => {
             parseInt(radius) || 200,
             countryCode || null
         );
-        
+
+        // Synchronous image enrichment
+        const missingImageArtists = [...new Set(result.filter(a => !a.image || a.image.includes('2a96cbd8b46e442fc41c2b86b821562f')).map(a => a.artistName || a.name).filter(Boolean))].slice(0, 15);
+        if (missingImageArtists.length > 0) {
+            const artistsToFetch = missingImageArtists.filter(name => {
+                const cached = imageCache.get(name.toLowerCase());
+                return !cached || Date.now() - cached.timestamp >= IMAGE_CACHE_TTL;
+            });
+            for (let i = 0; i < artistsToFetch.length; i += 5) {
+                const batch = artistsToFetch.slice(i, i + 5);
+                await Promise.allSettled(batch.map(name => getArtistImage(name)));
+                if (i + 5 < artistsToFetch.length) await new Promise(r => setTimeout(r, 200));
+            }
+        }
+
+        const enriched = result.map(artist => {
+            const cleanImage = (url) => url && url.includes('2a96cbd8b46e442fc41c2b86b821562f') ? null : url;
+            
+            let finalImageUrl = cleanImage(artist.image);
+            if (!finalImageUrl) {
+                const cached = imageCache.get((artist.artistName || artist.name || '').toLowerCase());
+                if (cached && Date.now() - cached.timestamp < IMAGE_CACHE_TTL && cached.url) {
+                    finalImageUrl = cached.url;
+                }
+            }
+
+            return {
+                ...artist,
+                image: finalImageUrl,
+                nextEvent: artist.nextEvent ? {
+                    ...artist.nextEvent,
+                    image: cleanImage(artist.nextEvent.image) || finalImageUrl
+                } : null,
+                events: artist.events ? artist.events.map(e => ({
+                    ...e,
+                    image: cleanImage(e.image) || finalImageUrl
+                })) : []
+            };
+        });
+
         res.json({
             totalFollowed: artistList.length,
-            withConcerts: result.length,
-            artists: result
+            withConcerts: enriched.length,
+            artists: enriched
         });
     } catch (err) {
         console.error('❌ [SmartRecs] Error in your-artists-on-tour:', err.message);
@@ -588,13 +617,14 @@ app.get('/recommendations/your-artists-on-tour', async (req, res) => {
  *   - genres: comma-separated genre slugs for filtering (optional)
  */
 app.get('/recommendations/discover-with-concerts', async (req, res) => {
-    const { seed_artist_name, latlong, radius, limit, genres, countryCode } = req.query;
+    const { seed_artist_name, latlong, radius, limit, genres, countryCode, excludeArtists } = req.query;
 
     if (!seed_artist_name) {
         return res.status(400).json({ error: 'Missing seed_artist_name' });
     }
 
     const genreList = genres ? genres.split(',').map(g => g.trim().toLowerCase()).filter(Boolean) : [];
+    const excludeList = excludeArtists ? excludeArtists.split(',').map(a => a.trim()).filter(Boolean) : [];
 
     try {
         const result = await SmartRecommendationsService.getDiscoverArtistsWithConcerts(
@@ -603,13 +633,49 @@ app.get('/recommendations/discover-with-concerts', async (req, res) => {
             parseInt(radius) || 200,
             parseInt(limit) || 10,
             genreList,
-            countryCode || null
+            countryCode || null,
+            excludeList
         );
-        
+
+        // Synchronous image enrichment
+        const missingImageArtists = [...new Set(result.filter(a => !a.image || a.image.includes('2a96cbd8b46e442fc41c2b86b821562f')).map(a => a.artistName || a.name).filter(Boolean))].slice(0, 15);
+        if (missingImageArtists.length > 0) {
+            const artistsToFetch = missingImageArtists.filter(name => {
+                const cached = imageCache.get(name.toLowerCase());
+                return !cached || Date.now() - cached.timestamp >= IMAGE_CACHE_TTL;
+            });
+            for (let i = 0; i < artistsToFetch.length; i += 5) {
+                const batch = artistsToFetch.slice(i, i + 5);
+                await Promise.allSettled(batch.map(name => getArtistImage(name)));
+                if (i + 5 < artistsToFetch.length) await new Promise(r => setTimeout(r, 200));
+            }
+        }
+
+        const enriched = result.map(artist => {
+            const cleanImage = (url) => url && url.includes('2a96cbd8b46e442fc41c2b86b821562f') ? null : url;
+            
+            let finalImageUrl = cleanImage(artist.image);
+            if (!finalImageUrl) {
+                const cached = imageCache.get((artist.artistName || artist.name || '').toLowerCase());
+                if (cached && Date.now() - cached.timestamp < IMAGE_CACHE_TTL && cached.url) {
+                    finalImageUrl = cached.url;
+                }
+            }
+
+            return {
+                ...artist,
+                image: finalImageUrl,
+                events: artist.events ? artist.events.map(e => ({
+                    ...e,
+                    image: cleanImage(e.image) || finalImageUrl
+                })) : []
+            };
+        });
+
         res.json({
             seed: seed_artist_name,
-            count: result.length,
-            artists: result
+            count: enriched.length,
+            artists: enriched
         });
     } catch (err) {
         console.error('❌ [SmartRecs] Error in discover-with-concerts:', err.message);

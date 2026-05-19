@@ -4,15 +4,15 @@ import { SessionContextProvider } from '@supabase/auth-helpers-react'
 import { supabase } from './lib/supabase'
 import Toast, { BaseToast, ErrorToast, InfoToast } from 'react-native-toast-message'
 
-/* -- Custom Toast Configuration for Premium Look -- */
+/* -- Custom Toast Configuration -- */
 const toastConfig = {
   success: (props: any) => (
     <BaseToast
       {...props}
       style={{ 
         borderLeftColor: '#b10404', 
-        backgroundColor: '#1C1C1E', // iOS Dark Gray
-        borderRadius: 25, // Pill shape
+        backgroundColor: '#1C1C1E',
+        borderRadius: 25, 
         borderLeftWidth: 0, 
         height: 50,
         width: '90%',

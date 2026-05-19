@@ -14,68 +14,68 @@ export default function TabLayout() {
         tabBarBackground: () => null, // We handle background in CustomTabBar
       }}
     >
-      <Tabs.Screen
-        name="calendar"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <Ionicons
-              name={focused ? 'calendar' : 'calendar-outline'}
-              size={24}
-              color={focused ? '#fff' : '#8E8E93'}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="search"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <Ionicons
-              name={focused ? 'search' : 'search-outline'}
-              size={24}
-              color={focused ? '#fff' : '#8E8E93'}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="home"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <Ionicons
-              name={focused ? 'home' : 'home-outline'}
-              size={24}
-              color={focused ? '#fff' : '#8E8E93'}
-            />
-          ),
-        }}
-      />
+    <Tabs.Screen
+      name="calendar"
+      options={{
+        tabBarIcon: ({ focused }) => (
+          <Ionicons
+            name={focused ? 'calendar' : 'calendar-outline'}
+            size={24}
+            color={focused ? '#fff' : '#8E8E93'}
+          />
+        ),
+      }}
+    />
+    <Tabs.Screen
+      name="search"
+      options={{
+        tabBarIcon: ({ focused }) => (
+          <Ionicons
+            name={focused ? 'search' : 'search-outline'}
+            size={24}
+            color={focused ? '#fff' : '#8E8E93'}
+          />
+        ),
+      }}
+    />
+    <Tabs.Screen
+      name="home"
+      options={{
+        tabBarIcon: ({ focused }) => (
+          <Ionicons
+            name={focused ? 'home' : 'home-outline'}
+            size={24}
+            color={focused ? '#fff' : '#8E8E93'}
+          />
+        ),
+      }}
+    />
 
-      <Tabs.Screen
-        name="recommendations"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <Ionicons
-              name={focused ? 'heart' : 'heart-outline'}
-              size={24}
-              color={focused ? '#fff' : '#8E8E93'}
-            />
-          ),
-        }}
-      />
+    <Tabs.Screen
+      name="recommendations"
+      options={{
+        tabBarIcon: ({ focused }) => (
+          <Ionicons
+            name={focused ? 'heart' : 'heart-outline'}
+            size={24}
+            color={focused ? '#fff' : '#8E8E93'}
+          />
+        ),
+      }}
+    />
 
-      <Tabs.Screen
-        name="settings"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <Ionicons
-              name={focused ? 'cog' : 'cog-outline'}
-              size={24}
-              color={focused ? '#fff' : '#8E8E93'}
-            />
-          ),
-        }}
-      />
-    </Tabs>
-  )
+     <Tabs.Screen
+       name="settings"
+       options={{
+         tabBarIcon: ({ focused }) => (
+           <Ionicons
+             name={focused ? 'cog' : 'cog-outline'}
+             size={24}
+             color={focused ? '#fff' : '#8E8E93'}
+           />
+         ),
+       }}
+     />
+   </Tabs>
+ )
 }

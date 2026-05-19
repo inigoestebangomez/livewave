@@ -22,12 +22,13 @@ const GENRE_SEED_MAP: Record<string, string> = {
 }
 
 // In-memory cache with stale-while-revalidate support
-// Fresh (< 15 min): return immediately, no refetch
-// Stale (< 60 min): return immediately, refetch in background
-// Expired (> 60 min): discard, fetch fresh
+// Fresh (< 5 min): return immediately, no refetch
+// Stale (< 30 min): return immediately, refetch in background
+// Expired (> 30 min): discard, fetch fresh
 const cache = new Map<string, { data: unknown; timestamp: number }>()
-const CACHE_TTL = 15 * 60 * 1000 // 15 minutes (fresh)
-const CACHE_STALE_TTL = 60 * 60 * 1000 // 60 minutes (max stale age)
+const CACHE_VERSION = 'v3' // Bump when backend changes significantly
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes (fresh)
+const CACHE_STALE_TTL = 30 * 60 * 1000 // 30 minutes (max stale age)
 
 interface CacheResult<T> {
   data: T
@@ -146,12 +147,12 @@ export function useRecommendations(): UseRecommendationsReturn {
           const lat = parseFloat(String(profile.location_latitude))
           const lng = parseFloat(String(profile.location_longitude))
           userCountryCode = getCountryCode(lat, lng)
-          setUserCity(getCountryLabel(lat, lng))
+          setUserCity(getCityLabel(lat, lng))
         }
       }
 
       // ========== Step 2: Stale-While-Revalidate cache check ==========
-      const cacheKey = `recs-${userId}-${userCountryCode || 'local'}`
+      const cacheKey = `recs-${userId}-${userCountryCode || 'local'}-${CACHE_VERSION}`
       const cached = getCached<{
         seedArtist: string | null
         recommendedEvents: Event[]
@@ -241,20 +242,47 @@ export function useRecommendations(): UseRecommendationsReturn {
 
       const fetchDiscover = async () => {
         try {
-          let discoverResult: DiscoverArtistWithConcerts[] = [];
-          // Try multiple seeds until one returns results or we run out
-          // Use countryCode + wider radius (3x) for Discover since we want to find similar artists
-          // touring the user's country, not just their immediate radius
-          for (const seed of discoverSeedNames) {
-            const result = await getDiscoverWithConcerts(seed, userLatLong, userRadius * 3, 8, genreSlugs, userCountryCode);
-            if (result && result.length > 0) {
-              discoverResult = result;
-              setSeedArtist(seed); // Update seed to the successful one
-              break;
+          // Seeds: top 3 followed artists to get diverse similar-artist suggestions
+          const discoverSeeds = allFollowedNames.length > 0 
+            ? allFollowedNames.slice(0, 3)
+            : [genreSlugs.length > 0 
+                ? GENRE_SEED_MAP[genreSlugs[0]] || 'Coldplay'
+                : 'Coldplay'];
+          
+          // Run all seeds IN PARALLEL — backend handles its own rate limiting per seed
+          const seedResults = await Promise.allSettled(
+            discoverSeeds.map(seed =>
+              getDiscoverWithConcerts(
+                seed,
+                userLatLong,
+                userRadius,
+                10,
+                genreSlugs,
+                userCountryCode,
+                allFollowedNames  // Pass exclusion list to backend — no frontend filter needed
+              )
+            )
+          );
+
+          // Merge results, deduplicate by artist name (keep highest eventCount)
+          const bestByArtist = new Map<string, DiscoverArtistWithConcerts>();
+          for (const result of seedResults) {
+            if (result.status !== 'fulfilled') continue;
+            for (const artist of result.value) {
+              const key = artist.artistName.toLowerCase();
+              const existing = bestByArtist.get(key);
+              if (!existing || artist.eventCount > existing.eventCount) {
+                bestByArtist.set(key, artist);
+              }
             }
           }
+
+          const discoverResult = Array.from(bestByArtist.values())
+            .sort((a, b) => b.eventCount - a.eventCount)
+            .slice(0, 8);
+
           if (mountedRef.current) {
-            setDiscoverArtists(discoverResult)
+            setDiscoverArtists(discoverResult);
             discoverArtistsRef.current = discoverResult;
           }
         } catch (error) {
@@ -267,46 +295,25 @@ export function useRecommendations(): UseRecommendationsReturn {
         }
       }
 
+
       const fetchConcerts = async () => {
         try {
-          // Concert recommendations - use user latlong+radius, NOT countryCode, to stay within user's location
-          const concertsResponse = seedName 
-            ? await getConcertRecommendations(seedName, undefined, userLatLong, userRadius, genreSlugs)
-            : { seed: seedName, events: [] }
-          
-          // Fetch genre-based events - these should also use user's location, not country
-          const genrePromises = genreSlugs.slice(0, 3).map(genre =>
-            getUpcomingByGenre(genre, userLatLong, userRadius, 10, null) // Use null for countryCode to respect radius
-          );
-          const genreResults = await Promise.allSettled(genrePromises);
+          // Recommended Concerts: near the user, similar to their followed artists
+          // Send ALL followed artists (backend picks top seeds and finds similar artists with concerts near user)
+          const concertsResponse = await getConcertRecommendations(
+            seedName || 'unknown',  // Legacy fallback; backend uses followedArtists if provided
+            undefined,
+            userLatLong,
+            userRadius,
+            genreSlugs,
+            allFollowedNames  // All followed artists as seeds — backend decides similarity logic
+          )
 
-          // Merge genre-based events with seed-based events
-          const genreEvents = genreResults
-            .filter((r): r is PromiseFulfilledResult<{ genre: string; count: number; events: Event[] }> => r.status === 'fulfilled')
-            .map(r => r.value.events)
-            .flat()
-
-          const uniqueEventsMap = new Map<string, Event>()
-          // Genre events first (higher priority for genre relevance)
-          genreEvents.forEach((item) => {
-            if (item.artistName && !uniqueEventsMap.has(item.artistName)) {
-              uniqueEventsMap.set(item.artistName, item)
-            }
-          })
-          // Then seed-based events (supplement, lower priority)
-          if (concertsResponse?.events?.length > 0) {
-            concertsResponse.events.forEach((item) => {
-              if (item.artistName && !uniqueEventsMap.has(item.artistName)) {
-                uniqueEventsMap.set(item.artistName, item)
-              }
-            })
-          }
-          const recommendedEvents = Array.from(uniqueEventsMap.values())
+          const recommendedEvents = concertsResponse?.events || []
 
           if (mountedRef.current) {
             setRecommendedEvents(recommendedEvents)
             recommendedEventsRef.current = recommendedEvents;
-            // Set seed artist if not already set by discover
             if (!seedArtist && seedName) {
               setSeedArtist(seedName);
             }
@@ -320,6 +327,7 @@ export function useRecommendations(): UseRecommendationsReturn {
           if (mountedRef.current) setConcertsLoading(false)
         }
       }
+
 
       // Wait for all promises to settle before caching
       await Promise.allSettled([
@@ -336,7 +344,7 @@ export function useRecommendations(): UseRecommendationsReturn {
       // Cache results with the final state values
       // NOTE: This caching happens after the state is updated by the async functions
       if (forceFresh || !cached) {
-        setCache(cacheKey, {
+        setCache(`recs-${userId}-${userCountryCode || 'local'}-${CACHE_VERSION}`, {
           seedArtist: seedName,
           recommendedEvents: recommendedEventsRef.current, // Use ref to get final values
           yourArtistsOnTour: yourArtistsOnTourRef.current, 

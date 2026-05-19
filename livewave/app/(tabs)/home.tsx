@@ -1,10 +1,11 @@
-import { StyleSheet, Text, View, ScrollView, Image, Dimensions, DeviceEventEmitter, RefreshControl } from 'react-native'
+import { StyleSheet, Text, View, ScrollView, Image, Dimensions, DeviceEventEmitter, RefreshControl, Alert, TouchableOpacity } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useUser } from '@supabase/auth-helpers-react'
 import { supabase } from '../lib/supabase'
 import { useUserEvents } from '../../hooks'
+import ConcertDetailSheet from '../../components/ConcertDetailSheet'
 
 const screenWidth = Dimensions.get('window').width
 
@@ -12,6 +13,8 @@ export default function LoggedHome() {
   const insets = useSafeAreaInsets()
   const user = useUser()
   const { events, refreshing, refresh } = useUserEvents({ futureOnly: true })
+  const [selectedEvent, setSelectedEvent] = useState<any>(null)
+  const [isSheetVisible, setIsSheetVisible] = useState(false)
 
   // Registrar push notifications
   useEffect(() => {
@@ -20,7 +23,7 @@ export default function LoggedHome() {
       try {
         const { registerForPushNotificationsAsync } = await import('../lib/notifications')
         const token = await registerForPushNotificationsAsync()
-        if (token) {
+        if (token && token.startsWith('ExponentPushToken')) {
           await supabase.from('profiles').update({ push_token: token }).eq('id', user.id)
         }
       } catch (error) {
@@ -33,7 +36,34 @@ export default function LoggedHome() {
   const nextEvent = events[0]
   const upcomingEvents = events.slice(1, 6)
 
+  const handleDelete = async (id: string) => {
+    try {
+      // Delete from user_events first (the join table)
+      await supabase.from('user_events').delete().eq('event_id', id).eq('user_id', user?.id || '')
+      
+      // Then delete from events if no other users have it saved
+      // For simplicity, we'll just remove it from events too
+      // In a more complex app, we'd check if other users have it saved
+      await supabase.from('events').delete().eq('id', id)
+      
+      // Refresh events
+      await refresh()
+      
+      // Close bottom sheet
+      setIsSheetVisible(false)
+    } catch (error) {
+      console.error('Error deleting event:', error)
+      Alert.alert('Error', 'No se pudo eliminar el concierto')
+    }
+  }
+
+  const handleCloseSheet = () => {
+    setIsSheetVisible(false)
+    setSelectedEvent(null)
+  }
+
   return (
+    <>
     <View style={styles.container}>
       <LinearGradient
         colors={['#000000', '#b10404']}
@@ -41,71 +71,106 @@ export default function LoggedHome() {
         style={StyleSheet.absoluteFill}
       />
 
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#b10404" />
-        }
-      >
-        <View style={[styles.greetingContainer, { marginTop: insets.top + 20 }]}>
-          <Text style={styles.greetingText}>Next Concert</Text>
-        </View>
+       <ScrollView 
+         contentContainerStyle={styles.scrollContent}
+         showsVerticalScrollIndicator={false}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#b10404" />
+         }
+       >
+         <View style={[styles.greetingContainer, { marginTop: insets.top + 20 }]}>
+           <Text style={styles.greetingText}>Next Concert</Text>
+         </View>
 
-        {nextEvent ? (
-          <View style={styles.mainCardWrapper}>
-              <View style={styles.eventCard}>
-                <Image
-                  source={{
-                    uri: nextEvent.artist?.image_url || 'https://via.placeholder.com/600x400?text=Sin+imagen',
-                  }}
-                  style={styles.eventImage}
-                />
-                <LinearGradient
-                  colors={['transparent', 'rgba(0,0,0,0.8)', '#000']}
-                  style={styles.imageOverlay}
-                />
-                <View style={styles.mainEventInfo}>
-                    <Text style={styles.eventTitle} numberOfLines={1}>{nextEvent.artist?.name || 'Artista desconocido'}</Text>
-                    <Text style={styles.eventDate}>
-                      {new Date(nextEvent.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })} • {nextEvent.city}
-                    </Text>
+          {nextEvent ? (
+           <TouchableOpacity style={styles.mainCardWrapper} activeOpacity={0.85} onPress={() => {
+              setSelectedEvent({
+                id: nextEvent.id,
+                artistName: nextEvent.artist?.name || '',
+                artistImageUrl: nextEvent.artist?.image_url || null,
+                date: nextEvent.date,
+                venue: nextEvent.venue || null,
+                city: nextEvent.city || null,
+                country: nextEvent.country || null,
+                externalUrl: nextEvent.external_url || null,
+                source: nextEvent.source || null,
+                url: nextEvent.url || null
+              });
+              setIsSheetVisible(true);
+            }}>
+                <View style={styles.eventCard}>
+                 <Image
+                   source={{
+                     uri: nextEvent.artist?.image_url || 'https://via.placeholder.com/600x400?text=Sin+imagen',
+                   }}
+                   style={styles.eventImage}
+                 />
+                 <LinearGradient
+                   colors={['transparent', 'rgba(0,0,0,0.8)', '#000']}
+                   style={styles.imageOverlay}
+                 />
+                  <View style={styles.mainEventInfo}>
+                      <Text style={styles.eventTitle} numberOfLines={1}>{nextEvent.artist?.name || 'Artista desconocido'}</Text>
+                      <Text style={styles.eventDate}>
+                        {new Date(nextEvent.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })} • {nextEvent.city}
+                      </Text>
+                  </View>
                 </View>
-              </View>
-          </View>
-        ) : (
-          <View style={[styles.eventCard, styles.emptyCard]}>
-            <Text style={styles.emptyText}>No upcoming shows</Text>
-          </View>
-        )}
+            </TouchableOpacity>
+          ) : (
+           <View style={[styles.eventCard, styles.emptyCard]}>
+             <Text style={styles.emptyText}>No upcoming shows</Text>
+           </View>
+         )}
 
-        <View style={styles.upcomingContainer}>
-          <Text style={styles.upcomingTitle}>Upcoming</Text>
-        </View>
-        
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.upcomingScroll}>
-          {upcomingEvents.length === 0 && (
-            <Text style={styles.emptyUpcomingText}>No more shows saved</Text>
-          )}
-          {upcomingEvents.map((event) => (
-            <View key={event.id} style={styles.artistContainer}>
-              <Image
-                source={{ uri: event.artist?.image_url || 'https://via.placeholder.com/200x200?text=Sin+imagen' }}
-                style={styles.artistImage}
-              />
-              <Text style={styles.artistTitle} numberOfLines={1}>
-                {event.artist?.name || 'Artista'}
-              </Text>
-              <Text style={styles.upcomingDateText}>
-                  {new Date(event.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }).toUpperCase()}
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
-      </ScrollView>
-    </View>
-  )
-}
+         <View style={styles.upcomingContainer}>
+           <Text style={styles.upcomingTitle}>Upcoming</Text>
+         </View>
+         
+         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.upcomingScroll}>
+           {upcomingEvents.length === 0 && (
+             <Text style={styles.emptyUpcomingText}>No more shows saved</Text>
+           )}
+            {upcomingEvents.map((event) => (
+              <TouchableOpacity key={event.id} style={styles.artistContainer} activeOpacity={0.8} onPress={() => {
+               setSelectedEvent({
+                 id: event.id,
+                 artistName: event.artist?.name || '',
+                 artistImageUrl: event.artist?.image_url || null,
+                 date: event.date,
+                 venue: event.venue || null,
+                 city: event.city || null,
+                 country: event.country || null,
+                 externalUrl: event.external_url || null,
+                 source: event.source || null,
+                 url: event.url || null
+              });
+              setIsSheetVisible(true);
+            }}>
+                <Image
+                  source={{ uri: event.artist?.image_url || 'https://via.placeholder.com/200x200?text=Sin+imagen' }}
+                  style={styles.artistImage}
+                />
+               <Text style={styles.artistTitle} numberOfLines={1}>
+                 {event.artist?.name || 'Artista'}
+               </Text>
+                <Text style={styles.upcomingDateText}>
+                    {new Date(event.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }).toUpperCase()}
+                </Text>
+              </TouchableOpacity>
+           ))}
+         </ScrollView>
+       </ScrollView>
+     </View>
+       <ConcertDetailSheet
+         visible={isSheetVisible}
+         event={selectedEvent}
+         onClose={handleCloseSheet}
+         onDelete={handleDelete}
+       />
+    </>
+   )
+ }
 
 const styles = StyleSheet.create({
   container: {

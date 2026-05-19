@@ -41,6 +41,8 @@ jest.mock('../../app/lib/api', () => ({
   getEventsForArtist: jest.fn().mockResolvedValue([]),
   getConcertRecommendations: jest.fn().mockResolvedValue({ seed: 'Muse', events: [] }),
   getDiscoverArtists: jest.fn().mockResolvedValue([]),
+  getYourArtistsOnTour: jest.fn().mockResolvedValue([]),
+  getDiscoverWithConcerts: jest.fn().mockResolvedValue([]),
 }))
 
 jest.mock('../../hooks/useCityLabel', () => ({
@@ -69,7 +71,7 @@ describe('useRecommendations', () => {
     await waitFor(() => {
       expect(result.current.loading).toBe(false)
       expect(result.current.recommendedEvents).toEqual([])
-      expect(result.current.yourEvents).toEqual([])
+      expect(result.current.yourArtistsOnTour).toEqual([])
     })
   })
 
