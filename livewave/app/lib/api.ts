@@ -12,9 +12,9 @@ export type {
 import type { Artist, Event, DiscoverArtist, RecommendationResponse } from '../../types/api'
 
 const debuggerHost = Constants.expoConfig?.hostUri
-const localhost = debuggerHost?.split(':')[0] || '192.168.1.135'
+const localhost = debuggerHost?.split(':')[0] || (__DEV__ ? '192.168.1.135' : '')
 
-export const API_URL = process.env.EXPO_PUBLIC_PROXY_URL || `http://${localhost}:8082`
+export const API_URL = process.env.EXPO_PUBLIC_PROXY_URL || (localhost ? `http://${localhost}:8082` : '')
 
 // Tipos internos para respuestas crudas de Ticketmaster
 interface TMVenue {
