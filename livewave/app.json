@@ -10,14 +10,22 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.livewave.app"
+      "bundleIdentifier": "com.livewave.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "LiveWave uses your location to find concerts and events happening near you.",
+        "NSCalendarsUsageDescription": "LiveWave needs calendar access to read event dates.",
+        "NSCalendarsWriteOnlyUsageDescription": "LiveWave needs calendar access to save concert dates to your calendar.",
+        "NSUserNotificationsUsageDescription": "LiveWave sends notifications about upcoming concerts for your favorite artists."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#000000"
       },
       "package": "com.livewave.app",
+      "versionCode": 1,
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.READ_CALENDAR",
@@ -39,19 +47,21 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#000000"
         }
       ],
       [
         "expo-calendar",
         {
-          "calendarPermission": "Allow Livewave to access your calendar to add concert dates."
+          "calendarPermission": "Allow LiveWave to access your calendar to add concert dates.",
+          "calendarWriteOnlyAccessPermission": "Allow LiveWave to add concert dates to your calendar."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Livewave to use your location to discover concerts nearby."
+          "locationWhenInUsePermission": "LiveWave uses your location to find concerts and events happening near you.",
+          "locationAlwaysAndWhenInUsePermission": "Allow LiveWave to use your location to discover concerts nearby."
         }
       ],
       "expo-web-browser"
