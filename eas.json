@@ -11,7 +11,13 @@
     "preview": {
       "distribution": "internal"
     },
-    "production": {}
+    "production": {
+      "channel": "production",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_PROXY_URL": ""
+      }
+    }
   },
   "submit": {
     "production": {}
