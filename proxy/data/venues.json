@@ -1,0 +1,38 @@
+{
+  "venues": [
+    {
+      "id": "razzmatazz",
+      "name": "Razzmatazz",
+      "city": "Barcelona",
+      "country": "España",
+      "lat": 41.3972,
+      "lng": 2.1978,
+      "platform": "direct",
+      "url": "https://www.salarazzmatazz.com/es/conciertos",
+      "selectors": {
+        "eventContainer": "article.goup",
+        "artistName": "img[alt]",
+        "eventUrl": "/agenda/",
+        "date": ".date"
+      },
+      "genreHint": ["rock", "punk", "hardcore", "indie", "electronic"]
+    },
+    {
+      "id": "sala-apolo",
+      "name": "Sala Apolo",
+      "city": "Barcelona",
+      "country": "España",
+      "lat": 41.3751,
+      "lng": 2.1593,
+      "platform": "direct",
+      "url": "https://www.sala-apolo.com/es/agenda",
+      "selectors": {
+        "eventContainer": "a.c-results__event__title[href*='/evento/']",
+        "artistName": "a.c-results__event__title[href*='/evento/']",
+        "date": ".c-leadMeta",
+        "eventUrl": "a.c-results__event__title[href*='/evento/']"
+      },
+      "genreHint": ["indie", "electronic", "pop", "rock"]
+    }
+  ]
+}

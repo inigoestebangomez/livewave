@@ -6,7 +6,27 @@ web-build/
 *.pem
 npm-debug.log
 yarn-error.log
+
+# Environment variables — NEVER commit these
 .env
+.env.*
+!.env.example
+
+# Debug logs — may contain API keys in URLs
+debug.log
+*.log
+
+# Debug/test scripts — development only
+proxy/debug-*.js
+proxy/debug-*.sh
+proxy/test_*.js
+proxy/test-*.js
+proxy/test-*.sh
+proxy/inspect-*.js
+proxy/verify-*.js
+proxy/scratch-*.js
+proxy/upload-festivals.js
+
 .idea/
 .vscode/
 ios/
