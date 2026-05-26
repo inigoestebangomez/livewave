@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: livewave-proxy
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: cd proxy && npm install --production
+    startCommand: cd proxy && node proxy.js
+    envVars:
+      - key: PORT
+        fromService:
+          name: livewave-proxy
+          type: web
+          property: port
+      - key: TM_API_KEY
+        sync: false
+      - key: EXPO_PUBLIC_SPOTIFY_CLIENT_ID
+        sync: false
+      - key: EXPO_PUBLIC_SPOTIFY_CLIENT_SECRET
+        sync: false
+      - key: LASTFM_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
